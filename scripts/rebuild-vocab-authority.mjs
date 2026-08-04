@@ -109,10 +109,11 @@ function canonicalForm(entry, originalTerm = "") {
   if (goodKanji.length && !firstSenseIsKana) return goodKanji[0].t;
   const goodReadings = entry.readings.filter((r) => !r.inf?.some?.((i) => BAD_RE_INF.has(i)));
   const pool = goodReadings.length ? goodReadings : entry.readings;
-  // a kana headword that was already correct stays as written
-  if (KANA_ONLY.test(originalTerm) && pool.some((r) => r.t === originalTerm)) return originalTerm;
-  if (KANA_ONLY.test(originalTerm) && pool.some((r) => r.t === toHira(originalTerm))) return toHira(originalTerm);
-  if (goodKanji.length && firstSenseIsKana) return pool[0].t;
+  // A kana headword stays as written only when JMdict also marks that spelling common.
+  // Otherwise take the primary reading, so 樫 surfaces as かし rather than the rare
+  // variant かしい that happened to be in the old list.
+  const keptAsWritten = pool.find((r) => r.t === originalTerm && r.pri.length);
+  if (KANA_ONLY.test(originalTerm) && keptAsWritten) return originalTerm;
   return pool[0].t;
 }
 
