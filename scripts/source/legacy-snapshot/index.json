@@ -1,0 +1,110 @@
+{
+  "generatedAt": "2026-07-18T20:22:54.323Z",
+  "periods": [
+    "115-07",
+    "115-08",
+    "115-09",
+    "115-10",
+    "115-11",
+    "115-12",
+    "116-01",
+    "116-02",
+    "116-03",
+    "116-04",
+    "116-05",
+    "116-06"
+  ],
+  "counts": {
+    "vocabulary": 4000,
+    "grammar": 240,
+    "reading": 52,
+    "listening": 104,
+    "monthlyChecks": 12,
+    "n3Mocks": 5,
+    "n2Mocks": 2
+  },
+  "unlockSchedule": [
+    {
+      "period": "115-07",
+      "vocabulary": 400,
+      "grammar": 60
+    },
+    {
+      "period": "115-08",
+      "vocabulary": 800,
+      "grammar": 120
+    },
+    {
+      "period": "115-09",
+      "vocabulary": 1200,
+      "grammar": 180
+    },
+    {
+      "period": "115-10",
+      "vocabulary": 1600,
+      "grammar": 240
+    },
+    {
+      "period": "115-11",
+      "vocabulary": 1600,
+      "grammar": 240
+    },
+    {
+      "period": "115-12",
+      "vocabulary": 1600,
+      "grammar": 240
+    },
+    {
+      "period": "116-01",
+      "vocabulary": 2400,
+      "grammar": 240
+    },
+    {
+      "period": "116-02",
+      "vocabulary": 2800,
+      "grammar": 240
+    },
+    {
+      "period": "116-03",
+      "vocabulary": 3200,
+      "grammar": 240
+    },
+    {
+      "period": "116-04",
+      "vocabulary": 3600,
+      "grammar": 240
+    },
+    {
+      "period": "116-05",
+      "vocabulary": 4000,
+      "grammar": 240
+    },
+    {
+      "period": "116-06",
+      "vocabulary": 4000,
+      "grammar": 240
+    }
+  ],
+  "sources": [
+    {
+      "name": "Language-Learning-decks",
+      "url": "https://github.com/vbvss199/Language-Learning-decks",
+      "license": "MIT / CC BY-SA 4.0 frequency data"
+    },
+    {
+      "name": "EDRDG/JMdict",
+      "url": "https://www.edrdg.org/",
+      "license": "EDRDG licence"
+    },
+    {
+      "name": "時雨之町",
+      "url": "https://www.sigure.tw/",
+      "use": "classification and grammar cross-check only; no copied explanations, examples, articles, or quizzes"
+    },
+    {
+      "name": "JLPT sample questions",
+      "url": "https://www.jlpt.jp/e/samples/sampleindex.html",
+      "use": "link only"
+    }
+  ]
+}
