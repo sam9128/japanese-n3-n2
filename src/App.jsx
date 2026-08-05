@@ -93,13 +93,16 @@ function mergeUiSession(saved, defaultPeriod) {
       { ...value, ...(saved?.pages?.[key] || {}) },
     ]),
   );
-  // `viewPeriod` is only which month the learner is browsing. It used to be
-  // called activePeriod and also decided what was unlocked, which meant a saved
-  // session pinned the learner to the month they first opened the app. Unlocking
-  // is now derived from the date; this value is clamped so a stale saved session
-  // (or one restored from Drive) can never point past the real current month.
-  const savedPeriod = saved?.viewPeriod ?? saved?.activePeriod;
+  // `viewPeriod` is only which month the learner is browsing. Unlocking is derived
+  // from the date now.
+  //
+  // The legacy `activePeriod` is deliberately NOT inherited: it doubled as the
+  // unlock gate and was frozen at whichever month the app was first opened, so a
+  // saved 115-07 was never a browsing choice the learner made. Carrying it over
+  // would leave old sessions parked on the wrong month.
+  const savedPeriod = saved?.viewPeriod;
   const candidate = PERIODS.includes(savedPeriod) ? savedPeriod : defaultPeriod;
+  // Still clamped, so a session restored from Drive cannot point past today.
   const viewPeriod =
     PERIODS.indexOf(candidate) > PERIODS.indexOf(defaultPeriod)
       ? defaultPeriod
@@ -2111,7 +2114,10 @@ function MockView({
 
 function ProgressView({
   data,
-  activePeriod,
+  // The status report always describes the real current month: it sits beside
+  // dailyPace, which is derived from the date, so a browsing selection here would
+  // put two different months on the same card.
+  reportPeriod,
   store,
   pageState,
   updatePage,
@@ -2122,7 +2128,7 @@ function ProgressView({
     ...data.grammar,
     ...data.reading,
     ...data.listening,
-  ].filter((x) => isUnlocked(x, activePeriod));
+  ].filter((x) => isUnlocked(x, reportPeriod));
   const learned = Object.keys(store.progress).filter((id) =>
     unlocked.some((x) => x.id === id),
   ).length;
@@ -2149,7 +2155,7 @@ function ProgressView({
       ]),
     ];
     download(
-      `日語階梯成果-${activePeriod}.csv`,
+      `日語階梯成果-${reportPeriod}.csv`,
       rows.map((r) => r.map(csvCell).join(",")).join("\n"),
       "text/csv;charset=utf-8",
     );
@@ -2186,7 +2192,7 @@ function ProgressView({
       </div>
       <div className="report-card">
         <div>
-          <span>月報 · {formatPeriod(activePeriod)}</span>
+          <span>月報 · {formatPeriod(reportPeriod)}</span>
           <h2>計畫與實際進度</h2>
         </div>
         <div className="progress-bar">
@@ -2195,12 +2201,12 @@ function ProgressView({
         <p>
           原訂：單字{" "}
           {
-            data.index.unlockSchedule.find((x) => x.period === activePeriod)
+            data.index.unlockSchedule.find((x) => x.period === reportPeriod)
               ?.vocabulary
           }
           、文法{" "}
           {
-            data.index.unlockSchedule.find((x) => x.period === activePeriod)
+            data.index.unlockSchedule.find((x) => x.period === reportPeriod)
               ?.grammar
           }
           。目前記錄 {store.events.length} 次學習事件。
@@ -2833,7 +2839,7 @@ export default function App() {
           {view === "progress" && (
             <ProgressView
               data={data}
-              activePeriod={viewPeriod}
+              reportPeriod={unlockedThrough}
               store={store}
               pageState={session.pages.progress}
               updatePage={pageActions.progress}
