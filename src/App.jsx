@@ -603,6 +603,62 @@ function PeriodRail({ viewPeriod, setViewPeriod, unlockedThrough, data }) {
   );
 }
 
+/**
+ * Month switcher for the browsing pages.
+ *
+ * PeriodRail is hidden below 1050px, which left 教材庫 / 閱讀聽力 / 月檢核與模考
+ * with no way to change month at all on a phone. This drives the same
+ * `viewPeriod`, so rail and picker stay in step; it is shown at every width
+ * rather than mobile-only so the control does not appear out of nowhere.
+ */
+function PeriodPicker({ viewPeriod, setViewPeriod, unlockedThrough, hint }) {
+  const limit = PERIODS.indexOf(unlockedThrough);
+  const options = limit < 0 ? PERIODS.slice(0, 1) : PERIODS.slice(0, limit + 1);
+  const index = options.indexOf(viewPeriod);
+  const selected = index >= 0 ? viewPeriod : options.at(-1);
+  const step = (offset) => {
+    const next = options[(index >= 0 ? index : options.length - 1) + offset];
+    if (next) setViewPeriod(next);
+  };
+  return (
+    <div className="period-picker">
+      <label>
+        <span>教材月份</span>
+        <select
+          value={selected}
+          onChange={(event) => setViewPeriod(event.target.value)}
+        >
+          {options.map((period) => (
+            <option key={period} value={period}>
+              {formatPeriod(period)}
+              {period === unlockedThrough ? "（本月）" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="period-step">
+        <button
+          type="button"
+          onClick={() => step(-1)}
+          disabled={index <= 0}
+          aria-label="上一個月份"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          onClick={() => step(1)}
+          disabled={index < 0 || index >= options.length - 1}
+          aria-label="下一個月份"
+        >
+          ›
+        </button>
+      </div>
+      {hint ? <span className="period-hint">{hint}</span> : null}
+    </div>
+  );
+}
+
 function MediaShortcuts({ goMedia, unlocked, children }) {
   return (
     <aside className="today-side">
@@ -1066,6 +1122,8 @@ function TodayView({
 function LibraryView({
   data,
   activePeriod,
+  setViewPeriod,
+  unlockedThrough,
   store,
   settings,
   pageState,
@@ -1123,6 +1181,12 @@ function LibraryView({
         eyebrow="LIBRARY"
         title="教材庫"
         text="搜尋、播放與重練目前已解鎖的教材。"
+      />
+      <PeriodPicker
+        viewPeriod={activePeriod}
+        setViewPeriod={setViewPeriod}
+        unlockedThrough={unlockedThrough}
+        hint={`本月共 ${(data[type] || []).filter((x) => x.unlockPeriod === activePeriod).length.toLocaleString()} 項新教材`}
       />
       <aside className="reference-panel" role="note">
         <strong>教材修訂原則</strong>
@@ -1294,6 +1358,8 @@ function LibraryPagination({
 function MediaView({
   data,
   activePeriod,
+  setViewPeriod,
+  unlockedThrough,
   settings,
   store,
   pageState,
@@ -1336,7 +1402,36 @@ function MediaView({
   const elapsed =
     elapsedBase +
     (startedAt ? Math.max(0, Math.floor((clock - startedAt) / 1000)) : 0);
-  if (!item) return <Empty text="這個月份尚無閱讀／聽力教材。" />;
+  const readingCount = data.reading.filter((x) =>
+    isUnlocked(x, activePeriod),
+  ).length;
+  const listeningCount = data.listening.filter((x) =>
+    isUnlocked(x, activePeriod),
+  ).length;
+  // The header carries the month switcher, so it has to render even when the
+  // chosen month is empty — otherwise the learner lands on a dead end.
+  const header = (
+    <>
+      <PageTitle
+        eyebrow="READ · LISTEN"
+        title="閱讀聽力"
+        text="先作答，再看稿與解析；系統會記下重播與錯因。"
+      />
+      <PeriodPicker
+        viewPeriod={activePeriod}
+        setViewPeriod={setViewPeriod}
+        unlockedThrough={unlockedThrough}
+        hint={`可練閱讀 ${readingCount} 篇 · 聽力 ${listeningCount} 篇`}
+      />
+    </>
+  );
+  if (!item)
+    return (
+      <section>
+        {header}
+        <Empty text="這個月份尚無閱讀／聽力教材，請切換到其他月份。" />
+      </section>
+    );
   const question = item.questions[0];
   const goToMediaItem = (nextIndex) =>
     updatePage((current) => ({
@@ -1373,11 +1468,7 @@ function MediaView({
     );
   return (
     <section>
-      <PageTitle
-        eyebrow="READ · LISTEN"
-        title="閱讀聽力"
-        text="先作答，再看稿與解析；系統會記下重播與錯因。"
-      />
+      {header}
       <div className="segmented">
         <button
           className={type === "reading" ? "active" : ""}
@@ -1703,6 +1794,8 @@ function ExamAnswerCard({
 function MockView({
   data,
   activePeriod,
+  setViewPeriod,
+  unlockedThrough,
   store,
   settings,
   pageState,
@@ -2072,6 +2165,13 @@ function MockView({
         title="月檢核與模考"
         text="全部為自編題目；官方資源只提供題型參考連結。"
       />
+      <PeriodPicker
+        viewPeriod={activePeriod}
+        setViewPeriod={setViewPeriod}
+        unlockedThrough={unlockedThrough}
+        hint={`可作答 ${list.length} 份`}
+      />
+      {!list.length && <Empty text="這個月份尚無檢核，請切換到其他月份。" />}
       <div className="assessment-grid">
         {list.map((x) => (
           <article key={x.id}>
@@ -2859,6 +2959,8 @@ export default function App() {
             <LibraryView
               data={data}
               activePeriod={viewPeriod}
+              setViewPeriod={setViewPeriod}
+              unlockedThrough={unlockedThrough}
               store={store}
               settings={settings}
               pageState={session.pages.library}
@@ -2869,6 +2971,8 @@ export default function App() {
             <MediaView
               data={data}
               activePeriod={viewPeriod}
+              setViewPeriod={setViewPeriod}
+              unlockedThrough={unlockedThrough}
               settings={settings}
               store={store}
               pageState={session.pages.media}
@@ -2879,6 +2983,8 @@ export default function App() {
             <MockView
               data={data}
               activePeriod={viewPeriod}
+              setViewPeriod={setViewPeriod}
+              unlockedThrough={unlockedThrough}
               store={store}
               settings={settings}
               pageState={session.pages.mock}
