@@ -13,6 +13,7 @@ import {
   notifyRemoteApplied,
   put,
   REMOTE_APPLIED_EVENT,
+  resetReissuedProgress,
   restoreSnapshot,
 } from "./db";
 import { getJapaneseVoices, speakJapanese, stopSpeech } from "./speech";
@@ -2685,7 +2686,15 @@ export default function App() {
   );
   useEffect(() => {
     loadStudyData()
-      .then(setData)
+      .then(async (loaded) => {
+        setData(loaded);
+        // Ids whose word changed in the rebuild carry ratings that describe a
+        // different word; drop those once so the learner re-meets them fresh.
+        await resetReissuedProgress(
+          loaded.index?.contentVersion,
+          loaded.index?.reissuedIds,
+        );
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
