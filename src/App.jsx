@@ -2146,7 +2146,17 @@ function ProgressView({
     // One row per period, each with that period's own figures rather than the
     // selected month's rate repeated down the column.
     const rows = [
-      ["月份", "原訂累積單字", "原訂累積文法", "已解鎖", "實際完成", "完成率", "當月學習事件"],
+      [
+        "月份",
+        "原訂累積單字",
+        "原訂累積文法",
+        "當月新增教材",
+        "累積已解鎖",
+        "累積完成",
+        "當月新完成",
+        "完成率",
+        "當月學習事件",
+      ],
       ...reportablePeriods(currentPeriod).map((period) => {
         const row = buildMonthlyReport({
           data,
@@ -2158,8 +2168,10 @@ function ProgressView({
           period,
           row.planned.vocabulary,
           row.planned.grammar,
+          row.newTotal,
           row.unlockedTotal,
           row.completedTotal,
+          row.completedThisMonth,
           `${row.rate}%`,
           row.events,
         ];
@@ -2232,11 +2244,13 @@ function ProgressView({
         </div>
         <p>
           原訂累積：單字 {report.planned.vocabulary}、文法{" "}
-          {report.planned.grammar}；當月新增 {report.newTotal.toLocaleString()} 項。
-          截至 {formatPeriod(selected)} 已解鎖{" "}
-          {report.unlockedTotal.toLocaleString()} 項，實際完成{" "}
-          {report.completedTotal.toLocaleString()} 項（{report.rate}%），
-          當月記錄 {report.events} 次學習事件。
+          {report.planned.grammar}；當月新增教材{" "}
+          {report.newTotal.toLocaleString()} 項。
+          {isCurrentMonth ? "截至今日" : `截至 ${formatPeriod(selected)} 月底`}
+          已解鎖 {report.unlockedTotal.toLocaleString()} 項，累積完成{" "}
+          {report.completedTotal.toLocaleString()} 項（{report.rate}%）；
+          當月新完成 {report.completedThisMonth.toLocaleString()} 項，
+          記錄 {report.events} 次學習事件。
         </p>
         {isCurrentMonth ? (
           <p>

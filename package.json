@@ -20,7 +20,8 @@
     "validate:study-quiz": "node scripts/validate-study-quiz.mjs",
     "validate:unlock-rules": "node scripts/validate-unlock-rules.mjs",
     "validate:readings": "node scripts/validate-readings.mjs",
-    "validate:all": "node scripts/validate-all.mjs"
+    "validate:all": "node scripts/validate-all.mjs",
+    "validate:monthly-report": "node scripts/validate-monthly-report.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
