@@ -1,4 +1,20 @@
-const CACHE = "nihongo-stairs-v33-jmdict-content-weekly-unlock";
+// Offline cache for the study PWA.
+//
+// The previous version answered every request from the cache and never went back
+// to the network, so a deploy only reached a device if someone remembered to edit
+// CACHE by hand. Forgetting that shipped a fix that silently never arrived.
+//
+// Requests now fall into three groups:
+//   - the app shell (navigations, index.html): network first, cache as fallback,
+//     so a new deploy is picked up on the next load and still works offline;
+//   - hashed build assets: cache first, because the filename changes when the
+//     content does, so a cached copy can never be stale;
+//   - study content: served from cache immediately and refreshed in the
+//     background, so lessons stay available offline but do update.
+//
+// Bump CACHE only when this file's own logic changes; content and code updates no
+// longer need it.
+const CACHE = "nihongo-stairs-v34-self-updating";
 const PERIODS = [
   "115-07",
   "115-08",
@@ -26,7 +42,7 @@ const PRELOAD = [
 async function installApp() {
   const cache = await caches.open(CACHE);
   await cache.addAll(PRELOAD);
-  const response = await fetch("./");
+  const response = await fetch("./", { cache: "no-cache" });
   const html = await response.text();
   const assetUrls = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
     .map((match) => match[1])
@@ -56,10 +72,48 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(handleRequest(event.request));
 });
 
-async function handleRequest(request) {
-  const cache = await caches.open(CACHE);
+// Vite fingerprints these, so a given URL always holds the same bytes.
+function isImmutableAsset(url) {
+  return /\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|svg|jpg)$/.test(
+    url.pathname,
+  );
+}
+
+function isAppShell(request, url) {
+  return (
+    request.mode === "navigate" ||
+    url.pathname.endsWith("/") ||
+    url.pathname.endsWith("/index.html")
+  );
+}
+
+async function cacheFirst(cache, request) {
   const cached = await cache.match(request.url, { ignoreSearch: true });
   if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok && response.type === "basic") {
+    await cache.put(request.url, response.clone());
+  }
+  return response;
+}
+
+// Serve the cached copy at once, then quietly replace it for next time.
+async function staleWhileRevalidate(cache, request) {
+  const cached = await cache.match(request.url, { ignoreSearch: true });
+  const network = fetch(request)
+    .then(async (response) => {
+      if (response.ok && response.type === "basic") {
+        await cache.put(request.url, response.clone());
+      }
+      return response;
+    })
+    .catch(() => null);
+  if (cached) return cached;
+  const response = await network;
+  return response || Response.error();
+}
+
+async function networkFirst(cache, request) {
   try {
     const response = await fetch(request);
     if (response.ok && response.type === "basic") {
@@ -67,6 +121,8 @@ async function handleRequest(request) {
     }
     return response;
   } catch {
+    const cached = await cache.match(request.url, { ignoreSearch: true });
+    if (cached) return cached;
     if (request.mode === "navigate") {
       return (
         (await cache.match(new URL("./offline.html", self.location.href).href)) ||
@@ -75,4 +131,12 @@ async function handleRequest(request) {
     }
     return Response.error();
   }
+}
+
+async function handleRequest(request) {
+  const cache = await caches.open(CACHE);
+  const url = new URL(request.url);
+  if (isImmutableAsset(url)) return cacheFirst(cache, request);
+  if (isAppShell(request, url)) return networkFirst(cache, request);
+  return staleWhileRevalidate(cache, request);
 }

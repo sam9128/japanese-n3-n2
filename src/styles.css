@@ -2264,3 +2264,39 @@ body {
     margin: 5px 0;
   }
 }
+
+/* Monthly report keeps its own month picker, independent of the period rail. */
+.report-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.report-period {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.report-period select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: #fff;
+  color: inherit;
+}
+@media (max-width: 520px) {
+  .report-head {
+    flex-direction: column;
+  }
+  .report-period {
+    width: 100%;
+  }
+  .report-period select {
+    width: 100%;
+  }
+}

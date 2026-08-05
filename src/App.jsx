@@ -19,6 +19,7 @@ import {
 import { getJapaneseVoices, speakJapanese, stopSpeech } from "./speech";
 import { calculateDailyProgress } from "./dailyProgress";
 import { planToday, unlockedThrough as unlockedThroughFor } from "./unlockSchedule";
+import { buildMonthlyReport, reportablePeriods } from "./monthlyReport";
 import DriveSyncPanel from "./DriveSyncPanel";
 import { buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
 import {
@@ -82,7 +83,7 @@ const DEFAULT_PAGE_STATES = {
     review: null,
     scrollY: 0,
   },
-  progress: { feedback: "", scrollY: 0 },
+  progress: { feedback: "", scrollY: 0, reportPeriod: null },
   settings: { scrollY: 0 },
 };
 
@@ -2114,48 +2115,58 @@ function MockView({
 
 function ProgressView({
   data,
-  // The status report always describes the real current month: it sits beside
-  // dailyPace, which is derived from the date, so a browsing selection here would
-  // put two different months on the same card.
-  reportPeriod,
+  // The month whose material is available. Only the default for the report and
+  // the ceiling of its picker — the report itself has its own selection, kept
+  // separate from the rail so browsing old material does not change the report.
+  currentPeriod,
   store,
   pageState,
   updatePage,
   dailyPace,
 }) {
-  const unlocked = [
-    ...data.vocabulary,
-    ...data.grammar,
-    ...data.reading,
-    ...data.listening,
-  ].filter((x) => isUnlocked(x, reportPeriod));
-  const learned = Object.keys(store.progress).filter((id) =>
-    unlocked.some((x) => x.id === id),
-  ).length;
-  const rate = unlocked.length
-    ? Math.round((learned / unlocked.length) * 100)
-    : 0;
+  const options = reportablePeriods(currentPeriod);
+  const selected = options.includes(pageState.reportPeriod)
+    ? pageState.reportPeriod
+    : currentPeriod;
+  const report = useMemo(
+    () =>
+      buildMonthlyReport({
+        data,
+        progress: store.progress,
+        events: store.events,
+        period: selected,
+      }),
+    [data, store.progress, store.events, selected],
+  );
+  const isCurrentMonth = selected === currentPeriod;
   const weak = Object.values(store.progress).filter(
     (x) => x.rating === "hard",
   ).length;
   function exportCsv() {
+    // One row per period, each with that period's own figures rather than the
+    // selected month's rate repeated down the column.
     const rows = [
-      ["月份", "原訂累積單字", "原訂累積文法", "實際完成", "完成率", "弱點數"],
-      ...data.index.unlockSchedule.map((x) => [
-        x.period,
-        x.vocabulary,
-        x.grammar,
-        store.events.filter((e) =>
-          e.occurredAt?.startsWith(
-            `${Number(x.period.slice(0, 3)) + 1911}-${x.period.slice(4)}`,
-          ),
-        ).length,
-        `${rate}%`,
-        weak,
-      ]),
+      ["月份", "原訂累積單字", "原訂累積文法", "已解鎖", "實際完成", "完成率", "當月學習事件"],
+      ...reportablePeriods(currentPeriod).map((period) => {
+        const row = buildMonthlyReport({
+          data,
+          progress: store.progress,
+          events: store.events,
+          period,
+        });
+        return [
+          period,
+          row.planned.vocabulary,
+          row.planned.grammar,
+          row.unlockedTotal,
+          row.completedTotal,
+          `${row.rate}%`,
+          row.events,
+        ];
+      }),
     ];
     download(
-      `日語階梯成果-${reportPeriod}.csv`,
+      `日語階梯成果-${selected}.csv`,
       rows.map((r) => r.map(csvCell).join(",")).join("\n"),
       "text/csv;charset=utf-8",
     );
@@ -2171,13 +2182,13 @@ function ProgressView({
       <div className="metric-grid">
         <article>
           <span>已有學習紀錄</span>
-          <strong>{learned.toLocaleString()}</strong>
-          <small>/ {unlocked.length.toLocaleString()}</small>
+          <strong>{report.completedTotal.toLocaleString()}</strong>
+          <small>/ {report.unlockedTotal.toLocaleString()}</small>
         </article>
         <article>
-          <span>目前完成率</span>
-          <strong>{rate}%</strong>
-          <small>依解鎖內容計算</small>
+          <span>{isCurrentMonth ? "目前完成率" : "當月完成率"}</span>
+          <strong>{report.rate}%</strong>
+          <small>截至 {formatPeriod(selected)} 解鎖內容</small>
         </article>
         <article>
           <span>需加強</span>
@@ -2191,33 +2202,57 @@ function ProgressView({
         </article>
       </div>
       <div className="report-card">
-        <div>
-          <span>月報 · {formatPeriod(reportPeriod)}</span>
-          <h2>計畫與實際進度</h2>
+        <div className="report-head">
+          <div>
+            <span>月報 · {formatPeriod(selected)}</span>
+            <h2>計畫與實際進度</h2>
+          </div>
+          <label className="report-period">
+            報告月份
+            <select
+              value={selected}
+              onChange={(event) =>
+                updatePage((current) => ({
+                  ...current,
+                  reportPeriod: event.target.value,
+                }))
+              }
+            >
+              {options.map((period) => (
+                <option key={period} value={period}>
+                  {formatPeriod(period)}
+                  {period === currentPeriod ? "（本月）" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="progress-bar">
-          <i style={{ width: `${rate}%` }} />
+          <i style={{ width: `${report.rate}%` }} />
         </div>
         <p>
-          原訂：單字{" "}
-          {
-            data.index.unlockSchedule.find((x) => x.period === reportPeriod)
-              ?.vocabulary
-          }
-          、文法{" "}
-          {
-            data.index.unlockSchedule.find((x) => x.period === reportPeriod)
-              ?.grammar
-          }
-          。目前記錄 {store.events.length} 次學習事件。
-          截至今日應達 {dailyPace.expectedTotal.toLocaleString()} 項，實際完成{" "}
-          {dailyPace.actualTotal.toLocaleString()} 項，
-          {dailyPace.delta > 0
-            ? `超前 ${dailyPace.delta} 項。`
-            : dailyPace.delta < 0
-              ? `落後 ${Math.abs(dailyPace.delta)} 項。`
-              : "目前符合進度。"}
+          原訂累積：單字 {report.planned.vocabulary}、文法{" "}
+          {report.planned.grammar}；當月新增 {report.newTotal.toLocaleString()} 項。
+          截至 {formatPeriod(selected)} 已解鎖{" "}
+          {report.unlockedTotal.toLocaleString()} 項，實際完成{" "}
+          {report.completedTotal.toLocaleString()} 項（{report.rate}%），
+          當月記錄 {report.events} 次學習事件。
         </p>
+        {isCurrentMonth ? (
+          <p>
+            截至今日應達 {dailyPace.expectedTotal.toLocaleString()} 項，實際完成{" "}
+            {dailyPace.actualTotal.toLocaleString()} 項，
+            {dailyPace.delta > 0
+              ? `超前 ${dailyPace.delta} 項。`
+              : dailyPace.delta < 0
+                ? `落後 ${Math.abs(dailyPace.delta)} 項。`
+                : "目前符合進度。"}
+          </p>
+        ) : (
+          <p>
+            這是{formatPeriod(selected)}的封存月報；每日進度只適用於本月，因此不列在這裡。
+          </p>
+        )}
         <label>
           老師回饋
           <textarea
@@ -2839,7 +2874,7 @@ export default function App() {
           {view === "progress" && (
             <ProgressView
               data={data}
-              reportPeriod={unlockedThrough}
+              currentPeriod={unlockedThrough}
               store={store}
               pageState={session.pages.progress}
               updatePage={pageActions.progress}
