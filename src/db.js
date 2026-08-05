@@ -112,3 +112,29 @@ export async function migrateLegacyProgress() {
   }
   await put("settings", { id: "legacy-migrated", value: true });
 }
+
+/**
+ * Drop recorded progress for cards whose word changed when the list was rebuilt.
+ *
+ * The rebuild kept a word on its original id wherever the word was real and
+ * unique, so a learner's history keeps pointing at what they actually studied.
+ * The ids that had to be re-issued held a duplicate (おすすめ was on the list
+ * three times) or a fragment that was never a word (アプ, cut out of アプリ), and
+ * a "記得" recorded against those says nothing about the word now in that slot.
+ *
+ * Runs once per contentVersion, so a later rebuild can repeat it.
+ */
+export async function resetReissuedProgress(contentVersion, reissuedIds = []) {
+  if (!contentVersion || !reissuedIds.length) return { cleared: 0, skipped: true };
+  const settings = await getAll("settings");
+  const marker = settings.find((item) => item.id === "content-version");
+  if (marker?.value === contentVersion) return { cleared: 0, skipped: true };
+
+  const progress = await getAll("cardProgress");
+  const stale = new Set(reissuedIds);
+  const kept = progress.filter((item) => !stale.has(item.id));
+  const cleared = progress.length - kept.length;
+  if (cleared) await replaceAll("cardProgress", kept, { notify: false });
+  await put("settings", { id: "content-version", value: contentVersion });
+  return { cleared, skipped: false };
+}

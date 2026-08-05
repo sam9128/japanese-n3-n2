@@ -25,11 +25,13 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm run validate:content
+      - run: pnpm run validate:readings
       - run: pnpm run validate:vocab-translations
       - run: pnpm run validate:grammar
       - run: pnpm run validate:progress
       - run: pnpm run validate:sync
       - run: pnpm run validate:study-quiz
+      - run: pnpm run validate:unlock-rules
       - run: pnpm build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID || '440469318854-ulndijqb6n60omrihk6b6bh42uho40k1.apps.googleusercontent.com' }}

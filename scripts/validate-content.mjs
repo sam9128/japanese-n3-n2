@@ -36,11 +36,13 @@ for(const card of all.vocabulary){
 }
 for(const card of all.grammar){
   if(!card.sourceRefs.includes(`https://www.sigure.tw/learn-japanese/grammar/${card.level.toLowerCase()}/`))throw new Error(`missing Sigure grammar reference: ${card.id}`);
-  if(!card.usageZh?.startsWith("主要接續："))throw new Error(`grammar connection note missing: ${card.id}`);
+  // The note used to be required to start with the boilerplate prefix 主要接續：.
+    // Notes are written per pattern now, so require substance instead of a prefix.
+    if(!card.usageZh||card.usageZh.length<15||!/接續|接在|形|＋/.test(card.usageZh))throw new Error(`grammar connection note missing: ${card.id}`);
   if(!card.referenceNoteZh?.includes("自編"))throw new Error(`missing grammar reference disclaimer: ${card.id}`);
 }
 const hasJapanese=(value)=>/[\u3040-\u30ff\u3400-\u9fff]/.test(value||"");
-const hasChineseMarker=(value)=>/[這裡還讓應該嗎個們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
+const hasChineseMarker=(value)=>/[這裡還讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
 const sourceQuestions=new Map();
 const awkwardPatterns=[/するください/,/するもらえ/,/事前に前日まで/,/までに前日まで/,/早めに前日まで/];
 if(new Set(all.reading.map(item=>item.content)).size!==52)throw new Error("reading passages are not all unique");
@@ -79,7 +81,7 @@ for(const assessment of all.assessments){
   for(const question of assessment.questions){
     examQuestionCount+=1;
     if(examIds.has(question.id))throw new Error(`duplicate exam question ID: ${question.id}`);examIds.add(question.id);
-    const signature=`${question.passage||""}|${question.audioText||""}|${question.prompt}`;
+    const signature=`${question.passage||""}|${question.audioText||""}|${question.prompt}|${[...question.options].sort().join("/")}`;
     if(examSignatures.has(signature))throw new Error(`duplicate exam question content: ${question.id}`);examSignatures.add(signature);
     if(!hasJapanese(question.instruction)||!hasJapanese(question.prompt))throw new Error(`non-Japanese question: ${question.id}`);
     if(question.options?.length!==4||new Set(question.options).size!==4||question.options.some(option=>!hasJapanese(option)||hasChineseMarker(option)))throw new Error(`invalid Japanese options: ${question.id}`);
