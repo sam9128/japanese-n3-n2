@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Converter } from "opencc-js";
 import { grammarExamples } from "./source/grammar-examples.mjs";
 import { assessmentScenarios } from "./source/assessment-scenarios.mjs";
 
@@ -8,11 +7,17 @@ const root = path.resolve(import.meta.dirname, "..");
 const dryRun = process.argv.includes("--dry-run");
 const printSamples = process.argv.includes("--print-samples");
 const printGrammarMap = process.argv.includes("--print-grammar-map");
-const sourceRoot = path.resolve(root, "..", "tmp", "language-learning-decks", "japanese");
 const outRoot = path.join(root, "public", "content", "periods");
 const periods = ["115-07", "115-08", "115-09", "115-10", "115-11", "115-12", "116-01", "116-02", "116-03", "116-04", "116-05", "116-06"];
-const vocabCaps = [400, 800, 1200, 1600, 1600, 1600, 2400, 2800, 3200, 3600, 4000, 4000];
-const grammarCaps = [60, 120, 180, 240, 240, 240, 240, 240, 240, 240, 240, 240];
+// Cumulative unlock caps per period.
+//
+// 115-11 and 115-12 stay flat on purpose: 115/11 is the five-mock-exam month and
+// the N3 sitting is 115/12/06, so both are revision only. That puts all 1600 N3
+// words and all 120 N3 grammar patterns before the exam, and spreads the N2 half
+// evenly over 116-01..116-06 instead of dumping 800 words into 116-01 and leaving
+// 116-06 empty.
+const vocabCaps = [400, 800, 1200, 1600, 1600, 1600, 2000, 2400, 2800, 3200, 3600, 4000];
+const grammarCaps = [30, 60, 90, 120, 120, 120, 140, 160, 180, 200, 220, 240];
 const sigureRefs = {
   vocabulary: {
     N3: "https://www.sigure.tw/learn-japanese/vocabulary/n3/",
@@ -24,360 +29,133 @@ const sigureRefs = {
   },
   reading: "https://www.sigure.tw/quiz/reading/medium/",
 };
-const ecdictZh = JSON.parse(fs.readFileSync(path.join(root, "scripts", "source", "ecdict-zh.json"), "utf8"));
-const exampleTranslationsZh = JSON.parse(
-  fs.readFileSync(
-    path.join(root, "scripts", "source", "example-translations-zh.json"),
-    "utf8",
-  ),
-);
-const toTraditional = Converter({ from: "cn", to: "tw" });
-const posZh = { noun:"名詞", verb:"動詞", adjective:"形容詞", adverb:"副詞", pronoun:"代名詞", conjunction:"接續詞", preposition:"助詞用法", interjection:"感嘆詞" };
-const termZhOverrides = {
-  "アニメ":"動畫；日本動畫作品", "ダメ":"不行；不可以；沒用", "ニュース":"新聞；消息", "カード":"卡片；卡", "方":"人（敬稱）；方向；方法",
-  "アプリ":"應用程式；App", "気":"精神；心情；氣氛", "バカ":"笨蛋；愚蠢", "分":"部分；份量；分鐘的量詞", "メール":"電子郵件",
-  "大":"大；大型；常作為前綴", "スポーツ":"運動；體育", "回":"次；回；次數量詞", "数":"數量；數目", "カメラ":"相機；攝影機",
-  "万":"一萬；萬", "ページ":"頁；頁面", "世界":"世界", "ドラマ":"戲劇；電視劇", "市":"市；城市；市場",
-  "県":"縣；日本行政區名稱", "同じ":"相同；一樣", "問題":"問題；題目", "度":"度；次；程度", "ドル":"美元；元",
-  "会":"會議；協會；社團", "スマホ":"智慧型手機", "力":"力量；能力；作用力", "本当に":"真的；確實", "多い":"多；數量很多",
-  "ホント":"真的；事實", "間":"之間；間隔；期間", "くれ":"給我；為我做", "プレゼント":"禮物；贈送", "名":"名字；名聲",
-  "かも":"也許；可能", "たり":"做……之類；列舉動作", "サッカー":"足球", "みたい":"像……；好像……", "ママ":"媽媽",
-  "女性":"女性；女人", "そんな":"那樣的；那種", "ビル":"大樓；建築物", "ブラック":"黑色；黑色的", "意味":"意思；含義",
-  "サイズ":"尺寸；大小", "しか":"只有……；後接否定", "タイム":"時間；成績時間", "先":"前方；尖端；目的地；先前", "こんな":"這樣的；這種",
-  "カラー":"顏色；彩色", "ボール":"球", "顔":"臉；表情", "くらい":"大約；到……程度", "キー":"鑰匙；按鍵；關鍵",
-  "声":"聲音；嗓音", "最近":"最近；近來", "違う":"不同；不對；弄錯", "ラジオ":"收音機；廣播", "チャンス":"機會；時機",
-  "頭":"頭；頭腦", "ルール":"規則", "あと":"之後；剩餘；痕跡", "心":"心；內心；心情", "バック":"後方；背面；袋子；背景",
-  "やる":"做；進行；給予（晚輩或動物）", "パンツ":"褲子；內褲", "ストーリー":"故事；情節", "ダンス":"舞蹈；跳舞", "場所":"場所；地點",
-  "バー":"酒吧；橫桿", "最後":"最後；結尾", "受ける":"接受；受到；參加考試", "言葉":"詞語；語言；說話", "ロボット":"機器人",
-  "インターネット":"網際網路", "最初":"最初；開始", "ビデオ":"影片；錄影", "ベスト":"最好；最佳；背心", "見える":"看得見；看起來",
-  "ボタン":"按鈕；鈕扣", "すごい":"厲害；驚人；非常", "頃":"時候；大約……時", "デート":"約會", "バイト":"打工；兼職",
-  "やめる":"停止；辭去；放棄", "曲":"歌曲；樂曲", "イカ":"魷魚；烏賊", "漫画":"漫畫", "シーズン":"季節；賽季",
-  "ほしい":"想要；希望得到", "普通":"普通；一般；通常", "番":"號碼；輪次；順序", "ずっと":"一直；很久；……得多", "ホーム":"家；月臺",
-  "ライト":"光；燈；輕量的", "最高":"最高；最棒", "オススメ":"推薦；建議", "トラック":"卡車；跑道；音軌", "こう":"這樣；用這種方式",
-  "簡単":"簡單；容易", "なぜ":"為什麼", "キロ":"公斤；公里；千", "気持ち":"心情；感受", "今回":"這次；本次",
-  "ダイエット":"節食；減重", "パーティー":"派對；聚會", "ちゃんと":"好好地；確實地；整齊地", "探す":"尋找；搜尋", "これから":"從現在起；接下來",
-  "ショー":"表演；節目", "レッド":"紅色", "結婚":"結婚；婚姻", "ブルー":"藍色；憂鬱的", "初めて":"第一次；初次",
-  "やっぱり":"果然；還是；畢竟", "オンライン":"線上；連線中", "生活":"生活；過日子", "け":"毛；頭髮；毛皮", "バイク":"摩托車；機車"
-};
-Object.assign(termZhOverrides, {
-  "こういう": "這樣的；這種",
-  "どういう": "怎樣的；什麼樣的",
-  "男性": "男性；男人",
-  "おかしい": "奇怪；可笑；不正常",
-  "台": "台；架子；座；機械或車輛的量詞",
-  "落ちる": "掉落；落下；落榜；下降",
-  "ないしょ": "秘密；保密",
-  "ヒミツ": "秘密；保密",
-  "ナイショ": "秘密；保密",
-  "秘密": "秘密；保密",
-});
-
-const zhExact = {
-  person: "人", people: "人們", thing: "事物", matter: "事情", fact: "事實", time: "時間", day: "日子",
-  year: "年", month: "月", today: "今天", tomorrow: "明天", yesterday: "昨天", morning: "早上", night: "夜晚",
-  school: "學校", student: "學生", teacher: "老師", company: "公司", work: "工作", study: "學習", book: "書",
-  water: "水", food: "食物", money: "錢", friend: "朋友", family: "家人", child: "孩子", country: "國家",
-  place: "場所", home: "家", house: "房子", station: "車站", train: "電車", car: "汽車", road: "道路",
-  question: "問題", answer: "答案", language: "語言", japanese: "日語", word: "單字", meaning: "意思",
-  good: "好的", bad: "不好的", big: "大的", small: "小的", new: "新的", old: "舊的", long: "長的", short: "短的",
-  high: "高的", low: "低的", fast: "快的", slow: "慢的", easy: "容易的", difficult: "困難的", important: "重要的",
-  "to do": "做", "to make": "製作", "to go": "去", "to come": "來", "to see": "看", "to hear": "聽",
-  "to speak": "說", "to read": "閱讀", "to write": "寫", "to eat": "吃", "to drink": "喝", "to buy": "買",
-  "to use": "使用", "to think": "思考", "to know": "知道", "to understand": "理解", "to live": "生活",
-  "not": "不；沒有", "yes": "是", "no": "不；沒有", "way": "方法", "reason": "理由", "problem": "問題"
+const readSource = (name) =>
+  JSON.parse(fs.readFileSync(path.join(root, "scripts", "source", name), "utf8"));
+// Word forms, kana readings, part of speech and English senses, resolved against
+// JMdict by scripts/rebuild-vocab-authority.mjs.
+const vocabAuthority = readSource("vocab-authority.json");
+// Hand-written Traditional Chinese, keyed by the numeric part of the vocab id.
+const vocabZh = readSource("vocab-zh.json");
+// Hand-written example sentences for entries the source deck cannot supply.
+const vocabExamples = readSource("vocab-examples.json");
+// Hand-written Chinese for deck sentences that had no translation yet, keyed by
+// vocab id so the same Japanese sentence can be glossed per entry.
+const vocabExampleZh = readSource("vocab-example-zh.json");
+// Hand-written per-pattern grammar meaning and connection notes.
+const grammarZh = readSource("grammar-zh.json");
+const exampleTranslationsZh = readSource("example-translations-zh.json");
+// Part-of-speech labels, keyed by the JMdict codes carried in vocab-authority.json.
+const POS_LABEL = {
+  n: "名詞", "n-suf": "名詞（接尾）", "n-pref": "名詞（接頭）", "n-adv": "名詞兼副詞",
+  "n-t": "時間名詞", pn: "代名詞", num: "數詞", ctr: "量詞",
+  adv: "副詞", "adv-to": "副詞（可加「と」）",
+  "adj-i": "い形容詞", "adj-na": "な形容詞", "adj-no": "の形容詞（後接名詞加「の」）",
+  "adj-f": "連體詞", "adj-t": "たる形容詞", "adj-nari": "なり形容詞",
+  vs: "サ變動詞（名詞＋する）", "vs-s": "サ變動詞（〜す）", "vs-i": "サ變動詞（〜ずる）",
+  vt: "他動詞", vi: "自動詞", v1: "一段動詞", vk: "カ變動詞（来る）", vz: "サ變動詞（〜ずる）",
+  v5u: "五段動詞（う結尾）", v5k: "五段動詞（く結尾）", v5g: "五段動詞（ぐ結尾）",
+  v5s: "五段動詞（す結尾）", v5t: "五段動詞（つ結尾）", v5n: "五段動詞（ぬ結尾）",
+  v5b: "五段動詞（ぶ結尾）", v5m: "五段動詞（む結尾）", v5r: "五段動詞（る結尾）",
+  v5aru: "五段動詞（特殊活用）", "v5k-s": "五段動詞（行く型）",
+  "v5u-s": "五段動詞（特殊活用）", "v5r-i": "五段動詞（特殊活用）",
+  exp: "慣用表現", int: "感嘆詞", conj: "接續詞", prt: "助詞", suf: "接尾語", pref: "接頭語",
+  "aux-adj": "助動詞（形容詞型）", "aux-v": "助動詞", aux: "助動詞", cop: "斷定助動詞",
 };
 
-const glossZhOverrides = {
-  "'s": "……的",
-  "-like": "像……的；帶有……感的",
-  "a bit": "有點；稍微",
-  "a little": "一點；稍微",
-  "a lot": "很多；非常",
-  "about": "關於；大約",
-  "abroad": "國外；海外",
-  "all": "全部；所有",
-  "all members": "全體成員",
-  "already": "已經",
-  "also": "也；而且",
-  "amazing": "驚人的；很棒的",
-  "annual period": "一年期間",
-  "annoying": "吵鬧的；煩人的",
-  "another": "另一個；其他的",
-  "appearance": "外觀；樣子",
-  "arrangements": "安排；準備",
-  "as expected": "果然；如預期",
-  "as if": "好像；彷彿",
-  "bad": "不好；差",
-  "bad taste": "味道不好；難吃",
-  "bear": "熊",
-  "be able to get": "能得到；能拿到",
-  "be able to receive": "能收到；能領取",
-  "be defeated": "被打敗；輸掉",
-  "beautiful": "美麗的",
-  "big": "大的",
-  "black": "黑色；黑色的",
-  "boy": "男孩；男子",
-  "by chance": "偶然；碰巧",
-  "chamber": "房間；室",
-  "chestnut": "栗子",
-  "circle": "圓；圈",
-  "clever": "聰明；機靈",
-  "coming": "即將到來的",
-  "concert": "演唱會；音樂會",
-  "cool": "酷；帥氣；涼爽",
-  "counter for machines": "機械、車輛等的量詞",
-  "counter for months": "月份量詞；……個月",
-  "crab": "螃蟹",
-  "cute": "可愛的",
-  "dangerous": "危險的",
-  "dark circles under eyes": "黑眼圈",
-  "delicious": "美味；好吃",
-  "difficult": "困難的",
-  "disagreeable": "討厭的；不愉快的",
-  "disappear": "消失；不見",
-  "dislike": "討厭；不喜歡",
-  "diverse": "多樣的",
-  "easy": "容易的",
-  "enough": "足夠；夠了",
-  "etc.": "等等",
-  "excellent": "優秀的；很棒的",
-  "fairly": "相當；還算",
-  "famous": "有名；著名",
-  "feces": "糞便；大便",
-  "feeling": "感覺；心情",
-  "few": "少的；幾乎沒有",
-  "final": "最後的",
-  "fine": "可以；很好；細緻",
-  "fool": "笨蛋；傻瓜",
-  "foolish": "愚蠢的",
-  "frightening": "可怕的",
-  "funny": "有趣的；奇怪的",
-  "ginger": "薑",
-  "glasses": "眼鏡",
-  "gold": "金；金色；金錢",
-  "gradually": "逐漸地",
-  "great": "很棒；偉大",
-  "green": "綠色；綠色的",
-  "happy": "開心；幸福",
-  "hard": "困難的；堅硬的",
-  "hopeless": "無望；沒辦法",
-  "how": "如何；怎樣",
-  "how many": "多少；幾個",
-  "idiot": "笨蛋；白痴",
-  "important": "重要的",
-  "informal": "口語的；非正式的",
-  "it's about time": "差不多該……了",
-  "jazz": "爵士樂",
-  "karaoke": "卡拉 OK",
-  "kind": "種類；類型",
-  "last": "最後；上次",
-  "little": "少量；一點",
-  "lovely": "可愛；美好",
-  "male": "男性；雄性",
-  "man": "男人；男性",
-  "many kinds of": "各式各樣的",
-  "manner": "方式；態度",
-  "marron": "栗子",
-  "messy": "凌亂；亂七八糟",
-  "mochi": "麻糬",
-  "mood": "心情；情緒",
-  "next": "下一個；接下來",
-  "next time": "下次",
-  "nice": "好的；不錯",
-  "no good": "不行；不好",
-  "noisy": "吵鬧的",
-  "not at all": "一點也不",
-  "not much": "不太；不多",
-  "not very": "不太",
-  "odd": "奇怪的",
-  "only": "只有；僅僅",
-  "orange": "橘子；橘色",
-  "overseas": "海外；國外",
-  "period": "期間；時期",
-  "playing cards": "撲克牌",
-  "platform": "平台；月台",
-  "pocket": "口袋",
-  "poop": "大便；便便",
-  "precious": "珍貴；重要",
-  "preparation": "準備",
-  "quite": "相當；很",
-  "really": "真的；非常",
-  "regrettable": "遺憾；可惜",
-  "rock": "岩石",
-  "rose": "玫瑰",
-  "room": "房間；室",
-  "rude": "失禮；粗魯",
-  "run out of": "用完；耗盡",
-  "scary": "可怕的",
-  "secret": "秘密；保密",
-  "skillful": "熟練；拿手",
-  "soon": "快要；不久",
-  "sort": "種類；類型",
-  "sort of": "一種；類型",
-  "special": "特別；特殊",
-  "spectacles": "眼鏡",
-  "stand": "台；架子；立場",
-  "startled": "嚇一跳；吃驚",
-  "stone": "石頭",
-  "strange": "奇怪的",
-  "style": "風格；樣式",
-  "stylish": "時髦；有型",
-  "such": "這樣的；那樣的",
-  "surprised": "驚訝的",
-  "that kind of": "那樣的；那種",
-  "this kind of": "這樣的；這種",
-  "this time": "這次",
-  "to be altered": "被改變；變化",
-  "to be able to get": "能得到；能拿到",
-  "to be able to receive": "能收到；能領取",
-  "to be defeated": "輸；被打敗",
-  "to change": "改變；變化",
-  "to die": "死；死亡",
-  "to disappear": "消失；不見",
-  "to drop": "掉下；落下",
-  "to fall": "掉落；落下",
-  "to get": "得到；拿到",
-  "to give": "給予",
-  "to hit": "打；碰撞",
-  "to lose": "失去；輸",
-  "to put on": "穿上；戴上",
-  "to receive": "收到；領取",
-  "to run out of": "用完；耗盡",
-  "to say": "說",
-  "to stop": "停止；停下",
-  "too bad": "遺憾；可惜",
-  "tough": "辛苦；困難",
-  "type": "種類；類型",
-  "unappetizing": "不好吃；倒胃口",
-  "unfortunate": "不幸；遺憾",
-  "unpleasant": "不愉快；討厭",
-  "useless": "沒用；無用",
-  "valuable": "有價值；珍貴",
-  "variety": "種類；變化",
-  "various": "各式各樣；各種",
-  "vehicles": "車輛；交通工具",
-  "very": "非常；很",
-  "village": "村莊",
-  "what": "什麼",
-  "what kind of": "什麼樣的；哪一種",
-  "what sort of": "什麼樣的；哪一類",
-  "white": "白色；白色的",
-  "whole": "整個；全部",
-  "wonderful": "很棒；精彩",
-};
-
-const dictionaryNoisePattern =
-  /(DOS|Internet|chief executive|CEO|命令|內部|内部|總線|总线|後端|后端|程序|文件|標準輸出|标准输出|校驗|校验|屏幕|設備|设备|位元|比特|系統|系统|網路|网络|Internet網|複數形式|复数形式|過去式|过去式|過去分詞|过去分词|現在分詞|现在分词|三單形式|三单形式|abbr\.|suff\.)/i;
-const posPrefixPattern = /^(?:a|adj|ad|adv|n|v|vi|vt|prep|conj|pron|interj|int|num|art|pl)\.\s*/i;
-
-function normalizeEnglish(value = "") {
-  return value
-    .toLowerCase()
-    .replace(/\([^)]*\)/g, "")
-    .replace(/\betc\.\)?/g, "etc.")
-    .replace(/\be\.g\.\)?/g, "e.g.")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^[.']+|[.']+$/g, "");
-}
-
-function cleanDictionaryZh(value = "") {
-  const normalized = toTraditional(value)
-    .replace(/\\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/[()（）][^()（）]*[a-zA-Z][^()（）]*[()（）]/g, "")
-    .replace(/\[[^\]]{0,40}\]/g, "");
-  const senses = normalized
-    .split(/[\n,，;；、]/)
-    .map((sense) => sense.trim().replace(posPrefixPattern, "").trim())
-    .map((sense) => sense.replace(/^<日>/, "").replace(/^〈日〉/, "").trim())
-    .filter(Boolean)
-    .filter((sense) => !dictionaryNoisePattern.test(sense))
-    .filter((sense) => !/[a-zA-Z]/.test(sense))
-    .filter((sense) => /[\u3400-\u9fff]/.test(sense));
-  return [...new Set(senses)].slice(0, 2).join("、");
-}
-
-function lookupZh(part) {
-  const key = normalizeEnglish(part);
-  if (!key || ["etc", "etc.", "e.g", "e.g."].includes(key)) return "";
-  if (glossZhOverrides[key]) return glossZhOverrides[key];
-  const candidates = [
-    key,
-    key.replace(/^to be able to /, "to "),
-    key.replace(/^to /, ""),
-    key.replace(/^be /, ""),
-    key.replace(/^one'?s /, ""),
-    key.replace(/ies$/, "y"),
-    key.replace(/s$/, ""),
-  ];
-  for (const candidate of candidates) {
-    if (glossZhOverrides[candidate]) return glossZhOverrides[candidate];
-  }
-  if (key.includes(" ")) {
-    const stopWords = new Set(["the", "and", "for", "with", "from", "into", "that", "this", "one", "ones", "someone", "something", "very", "often", "as", "a", "an", "of", "or"]);
-    const translatedWords =
-      key
-        .match(/[a-z][a-z'-]+/g)
-        ?.filter((word) => !stopWords.has(word))
-        .map((word) => glossZhOverrides[word] || cleanDictionaryZh(ecdictZh[word] || "").split(/[、；]/)[0])
-        .filter((value) => /[\u3400-\u9fff]/.test(value || "")) || [];
-    return [...new Set(translatedWords)].slice(0, 3).join("、");
-  }
-  for (const candidate of candidates) {
-    const translated = cleanDictionaryZh(ecdictZh[candidate] || "");
-    if (/[\u3400-\u9fff]/.test(translated || "")) return translated;
-  }
-  return "";
-}
-
-function compactMeanings(values = [], max = 4) {
-  const segments = values
-    .flatMap((value) => String(value || "").split("；"))
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const unique = [];
-  for (const segment of segments) {
-    if (unique.includes(segment)) continue;
-    if (unique.some((value) => value.includes(segment) || segment.includes(value))) continue;
-    unique.push(segment);
-  }
-  return unique.slice(0, max).join("；");
-}
-
-function toZh(gloss = "", term = "此詞") {
-  if (termZhOverrides[term]) return termZhOverrides[term];
-  const parts = gloss.split(/[;,/]/).map((part) => part.trim()).filter(Boolean);
-  const translated = parts.map((part) => {
-    const key = normalizeEnglish(part);
-    if (zhExact[key]) return zhExact[key];
-    const dictionaryMeaning = lookupZh(part);
-    if (dictionaryMeaning) return dictionaryMeaning;
-    for (const [english, chinese] of Object.entries(zhExact)) {
-      if (key === english || key.startsWith(`${english} `)) return chinese;
+function posLabels(pos = []) {
+  const seen = new Set();
+  const labels = [];
+  for (const code of pos) {
+    const label = POS_LABEL[code];
+    if (label && !seen.has(label)) {
+      seen.add(label);
+      labels.push(label);
     }
-    return "";
-  }).filter(Boolean);
-  return compactMeanings(translated) || `「${term}」表示例句中所呈現的事物、動作或狀態，請配合上下文理解`;
-}
-
-function usageZh(item, meaningZh) {
-  const label = posZh[item.pos] || "一般詞彙";
-  const advice = item.pos === "verb" ? "注意動詞變化與助詞搭配" : item.pos === "adjective" ? "注意修飾名詞或句尾的形式" : item.pos === "adverb" ? "通常用來修飾動作或整句語氣" : "請連同例句中的固定搭配一起記憶";
-  return `詞性：${label}。核心意思：${meaningZh}。${advice}。`;
-}
-
-function romajiToKana(input = "") {
-  let s = input.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z'-]/g, "");
-  const map = { kya:"きゃ",kyu:"きゅ",kyo:"きょ",sha:"しゃ",shu:"しゅ",sho:"しょ",cha:"ちゃ",chu:"ちゅ",cho:"ちょ",nya:"にゃ",nyu:"にゅ",nyo:"にょ",hya:"ひゃ",hyu:"ひゅ",hyo:"ひょ",mya:"みゃ",myu:"みゅ",myo:"みょ",rya:"りゃ",ryu:"りゅ",ryo:"りょ",gya:"ぎゃ",gyu:"ぎゅ",gyo:"ぎょ",ja:"じゃ",ju:"じゅ",jo:"じょ",bya:"びゃ",byu:"びゅ",byo:"びょ",pya:"ぴゃ",pyu:"ぴゅ",pyo:"ぴょ",tsu:"つ",shi:"し",chi:"ち",fu:"ふ",ka:"か",ki:"き",ku:"く",ke:"け",ko:"こ",sa:"さ",su:"す",se:"せ",so:"そ",ta:"た",te:"て",to:"と",na:"な",ni:"に",nu:"ぬ",ne:"ね",no:"の",ha:"は",hi:"ひ",he:"へ",ho:"ほ",ma:"ま",mi:"み",mu:"む",me:"め",mo:"も",ya:"や",yu:"ゆ",yo:"よ",ra:"ら",ri:"り",ru:"る",re:"れ",ro:"ろ",wa:"わ",wo:"を",ga:"が",gi:"ぎ",gu:"ぐ",ge:"げ",go:"ご",za:"ざ",ji:"じ",zu:"ず",ze:"ぜ",zo:"ぞ",da:"だ",de:"で",do:"ど",ba:"ば",bi:"び",bu:"ぶ",be:"べ",bo:"ぼ",pa:"ぱ",pi:"ぴ",pu:"ぷ",pe:"ぺ",po:"ぽ",a:"あ",i:"い",u:"う",e:"え",o:"お",n:"ん" };
-  let out = "";
-  while (s.length) {
-    if (/^([bcdfghjklmpqrstvwxyz])\1/.test(s) && s[0] !== "n") { out += "っ"; s = s.slice(1); continue; }
-    if (s[0] === "n" && (s[1] === "'" || !/[aeiouy]/.test(s[1] || ""))) { out += "ん"; s = s.slice(s[1] === "'" ? 2 : 1); continue; }
-    const key = Object.keys(map).sort((a,b)=>b.length-a.length).find((candidate) => s.startsWith(candidate));
-    if (key) { out += map[key]; s = s.slice(key.length); } else { s = s.slice(1); }
   }
-  return out;
+  return labels;
+}
+
+// Advice that actually differs by word class, instead of one sentence for all 4000.
+function posAdvice(pos = []) {
+  const has = (code) => pos.includes(code);
+  const tips = [];
+  if (has("vt") && has("vi")) tips.push("他動詞與自動詞同形，靠助詞「を／が」判斷是誰做、誰變化");
+  else if (has("vt")) tips.push("他動詞，受詞用「を」標示");
+  else if (has("vi")) tips.push("自動詞，不接受詞「を」");
+  if (has("vs") || has("vs-s") || has("vs-i")) tips.push("加「する」即可當動詞使用");
+  if (has("adj-i")) tips.push("い形容詞，修飾名詞時直接接，否定為「〜くない」");
+  if (has("adj-na")) tips.push("な形容詞，修飾名詞時要加「な」");
+  if (has("adj-no")) tips.push("修飾名詞時要加「の」");
+  if (has("adv") || has("adv-to")) tips.push("副詞，用來修飾動作或整句語氣");
+  if (has("n-suf") || has("suf")) tips.push("接在其他語詞後面構成新詞");
+  if (has("n-pref") || has("pref")) tips.push("接在其他語詞前面構成新詞");
+  if (has("ctr")) tips.push("量詞，接在數字後面計數");
+  if (has("exp")) tips.push("固定說法，整句一起記");
+  if (has("int")) tips.push("感嘆詞，單獨使用表達語氣");
+  if (has("prt")) tips.push("助詞，注意它標示的是主語、受詞還是範圍");
+  if (!tips.length) tips.push("請連同例句中的搭配一起記憶");
+  return tips;
+}
+
+function vocabUsageZh(row, meaningZh) {
+  const labels = posLabels(row.pos);
+  const head = labels.length ? "詞性：" + labels.join("、") + "。" : "";
+  const senseCount = (row.senses || []).length;
+  const primary = meaningZh.split("；")[0];
+  const multi =
+    senseCount > 1
+      ? "JMdict 收錄 " + senseCount + " 個義項，本卡以最常用的「" + primary + "」為主，其餘義項請依上下文判斷。"
+      : "";
+  const notes = (row.senses?.[0]?.inf || []).filter(Boolean);
+  const note = notes.length ? "用法註記：" + notes.join("；") + "。" : "";
+  return (head + posAdvice(row.pos).join("；") + "。" + multi + note).trim();
+}
+
+// Explanation shape varies by word class so the 4000 cards do not all read alike.
+function vocabExplanationZh(row, meaningZh) {
+  const term = row.term;
+  const first = meaningZh.split("；")[0];
+  const kana = row.reading && row.reading !== term ? "（" + row.reading + "）" : "";
+  const pos = row.pos || [];
+  const isVerb =
+    pos.includes("vt") || pos.includes("vi") || pos.includes("vs") || /^v[0-9k-z]/.test(pos[0] || "");
+  if (isVerb) {
+    const role = pos.includes("vt")
+      ? "承接前面用「を」標示的受詞"
+      : pos.includes("vi")
+        ? "描述主語本身的動作或變化"
+        : "在句中作動詞使用";
+    return "例句裡的「" + term + "」" + kana + role + "，這裡表示「" + first + "」。請留意它前面搭配的助詞。";
+  }
+  if (pos.includes("adj-i") || pos.includes("adj-na") || pos.includes("adj-no")) {
+    return "「" + term + "」" + kana + "在句中描述狀態或性質，意思是「" + first + "」。注意它接名詞與放句尾時的形式差異。";
+  }
+  if (pos.includes("adv") || pos.includes("adv-to")) {
+    return "「" + term + "」" + kana + "修飾後面的動作或整句語氣，表示「" + first + "」。可觀察它擺放的位置。";
+  }
+  if (pos.includes("exp")) {
+    return "「" + term + "」" + kana + "是固定說法，整句表示「" + first + "」，不要拆開逐字理解。";
+  }
+  if (pos.includes("ctr") || pos.includes("n-suf") || pos.includes("suf")) {
+    return "「" + term + "」" + kana + "接在前面的語詞之後，表示「" + first + "」。記憶時連同前面的搭配一起記。";
+  }
+  if (pos.includes("int")) {
+    return "「" + term + "」" + kana + "是感嘆詞，單獨使用即可表達「" + first + "」的語氣。";
+  }
+  return "例句中的「" + term + "」" + kana + "是名詞，指「" + first + "」。請一併記住它在句中搭配的助詞。";
+}
+
+function resolveVocabExample(row) {
+  // 1. A fully hand-written example, for entries the source deck cannot supply.
+  const authored = vocabExamples[row.id];
+  if (authored?.ja && authored?.zh) return { ja: authored.ja, zh: authored.zh };
+  const deck = row.deckExample;
+  if (!deck?.ja) throw new Error("單字缺少可用例句：" + row.id + " " + row.term);
+  // 2. The deck sentence with a translation written for this entry.
+  if (vocabExampleZh[row.id]) return { ja: deck.ja, zh: vocabExampleZh[row.id] };
+  // 3. The deck sentence with a translation already in the shared pool.
+  if (exampleTranslationsZh[deck.ja]) return { ja: deck.ja, zh: exampleTranslationsZh[deck.ja] };
+  throw new Error("單字缺少例句中文翻譯：" + row.id + " " + deck.ja);
 }
 
 function periodFor(index, caps) {
@@ -385,163 +163,68 @@ function periodFor(index, caps) {
 }
 
 function loadWords() {
-  const files = ["hiragana.json", "katakana.json", "kanji.json"];
-  if (!files.every((file) => fs.existsSync(path.join(sourceRoot, file)))) {
-    throw new Error(`找不到開放詞彙資料：${sourceRoot}`);
+  if (vocabAuthority.length !== 4000) {
+    throw new Error("單字骨架數量不符：" + vocabAuthority.length);
   }
-  const rank = { A2: 0, B1: 1, B2: 2, C1: 3, A1: 4, C2: 5, Unknown: 6 };
-  const seen = new Set();
-  const all = files.flatMap((file) => JSON.parse(fs.readFileSync(path.join(sourceRoot, file), "utf8")))
-    .filter((item) => item.useful_for_flashcard && item.word && item.english_translation)
-    .sort((a,b) => (rank[a.cefr_level] ?? 9) - (rank[b.cefr_level] ?? 9) || (a.word_frequency ?? 999999) - (b.word_frequency ?? 999999))
-    .filter((item) => !seen.has(item.word) && seen.add(item.word))
-    .slice(0, 4000);
-  return all.map((item, index) => {
-    const meaningZh = toZh(item.english_translation, item.word);
-    const exampleJa = item.example_sentence_native || `${item.word}について勉強します。`;
-    const exampleZh = exampleTranslationsZh[exampleJa];
-    if (!exampleZh) throw new Error(`例句缺少中文翻譯：${exampleJa}`);
+  return vocabAuthority.map((row, index) => {
+    const key = row.id.slice(6);
+    const meaningZh = vocabZh[key];
+    if (!meaningZh) throw new Error("單字缺少中文釋義：" + row.id + " " + row.term);
+    const example = resolveVocabExample(row);
+    if (!example.ja.includes(row.term) && !example.ja.includes(row.reading)) {
+      throw new Error("例句未包含詞條：" + row.id + " " + row.term + " / " + example.ja);
+    }
     const level = index < 1600 ? "N3" : "N2";
-    return ({
-    id: `vocab-${String(index + 1).padStart(4, "0")}`,
-    level,
-    category: "vocab",
-    term: item.word,
-    reading: /[\u3040-\u30ff]/.test(item.word) && !/[\u4e00-\u9faf]/.test(item.word) ? item.word : romajiToKana(item.romanization),
-    readingQuizEligible: !/[āēīōū]/i.test(item.romanization||"") && !/(zu|ji)/i.test(item.romanization||"") && item.word.length>=2,
-    meaningZh,
-    meaningEn: item.english_translation,
-    usageZh: usageZh(item, meaningZh),
-    examples: [{ ja: exampleJa, zh: exampleZh, explanationZh: `本句使用「${item.word}」表達「${meaningZh}」。請觀察它和前後詞語的搭配。` }],
-    audioText: item.word,
-    unlockPeriod: periodFor(index, vocabCaps),
-    tags: [item.pos || "word", item.cefr_level || "Unknown"],
-    sourceRefs: ["https://github.com/vbvss199/Language-Learning-decks", "https://www.edrdg.org/", "https://github.com/skywind3000/ECDICT", sigureRefs.vocabulary[level]],
-    referenceNoteZh: `分級與主題分類交叉參考時雨之町 ${level} 單字索引；中文解釋與例句未轉載，依開放資料重新編寫。`,
-    license: "Language-Learning-decks MIT; frequency data CC BY-SA 4.0; EDRDG/JMdict attribution retained; Chinese glosses derived with ECDICT (MIT)"
-  });
+    const hasKanji = /[一-龯]/.test(row.term);
+    return {
+      id: row.id,
+      level,
+      category: "vocab",
+      term: row.term,
+      reading: row.reading,
+      // Readings come from JMdict now, so reading quizzes no longer have to skip
+      // long-vowel words in order to hide the macron-stripping bug.
+      readingQuizEligible: hasKanji && row.reading !== row.term,
+      meaningZh,
+      meaningEn: row.glossEn,
+      usageZh: vocabUsageZh(row, meaningZh),
+      examples: [
+        {
+          ja: example.ja,
+          zh: example.zh,
+          explanationZh: vocabExplanationZh(row, meaningZh),
+        },
+      ],
+      audioText: row.term,
+      unlockPeriod: periodFor(index, vocabCaps),
+      tags: [...new Set([...(row.pos || []).slice(0, 2), level])],
+      sourceRefs: [
+        "https://www.edrdg.org/jmdict/j_jmdict.html",
+        "https://github.com/vbvss199/Language-Learning-decks",
+        sigureRefs.vocabulary[level],
+      ],
+      referenceNoteZh:
+        "詞形、假名讀音與詞性取自 JMdict；繁體中文釋義、用法說明與例句解析為本計畫自行撰寫，未轉載他站內容。",
+      license:
+        "JMdict/EDRDG licence (CC BY-SA 4.0); Language-Learning-decks MIT; Chinese glosses CC BY 4.0 — 本計畫自編",
+    };
   });
 }
 
 const grammarPatterns = `〜うちに|〜間に|〜間|〜てからでないと|〜ところだ|〜たところだ|〜ているところだ|〜ばかりだ|〜たばかり|〜ようとする|〜つつある|〜つつ|〜一方だ|〜ことになっている|〜ことにしている|〜ことになる|〜ことにする|〜ようになる|〜ようにする|〜ようにしている|〜ことがある|〜ことはない|〜わけだ|〜わけではない|〜わけがない|〜わけにはいかない|〜はずだ|〜はずがない|〜べきだ|〜べきではない|〜ものだ|〜ものではない|〜ということだ|〜とのことだ|〜と言われている|〜とみえる|〜ようだ|〜みたいだ|〜らしい|〜そうだ（樣態）|〜そうだ（傳聞）|〜っぽい|〜がちだ|〜気味だ|〜げ|〜かもしれない|〜に違いない|〜に決まっている|〜おそれがある|〜可能性がある|〜ために（目的）|〜ために（原因）|〜ように（目的）|〜ように（祈願）|〜によって|〜によると|〜によれば|〜を通じて|〜を通して|〜に対して|〜について|〜に関して|〜をめぐって|〜にとって|〜として|〜において|〜に基づいて|〜に応じて|〜に比べて|〜に加えて|〜に反して|〜にかわって|〜に代わり|〜にこたえて|〜に沿って|〜につれて|〜にしたがって|〜にともなって|〜とともに|〜に限って|〜に限らず|〜だけでなく|〜ばかりでなく|〜はもちろん|〜のみならず|〜さえ|〜こそ|〜なんか|〜など|〜にしては|〜わりに|〜くせに|〜にもかかわらず|〜ながらも|〜ものの|〜とはいえ|〜といっても|〜からといって|〜ても|〜たとえ〜ても|〜としても|〜にしても|〜にしろ|〜にせよ|〜なら|〜としたら|〜とすれば|〜ば|〜たら|〜と|〜ないことには|〜限り|〜限りでは|〜ない限り|〜さえ〜ば|〜てこそ|〜からこそ|〜ば〜ほど|〜なら〜ほど|〜ほど|〜くらい|〜だけ|〜だけあって|〜だけに|〜だけのことはある|〜につき|〜ごとに|〜おきに|〜たびに|〜たび|〜にあたって|〜際に|〜に先立って|〜て以来|〜てからというもの|〜をきっかけに|〜を契機に|〜次第|〜次第で|〜次第だ|〜次第では|〜上で|〜上に|〜上は|〜以上|〜からには|〜からして|〜からすると|〜から見ると|〜から言うと|〜にしても|〜にしたって|〜というより|〜どころか|〜どころではない|〜どころではなく|〜反面|〜一方で|〜かわりに|〜にかわって|〜た末に|〜あげく|〜結果|〜ところを|〜ところに|〜ところへ|〜最中に|〜最中だ|〜途中で|〜かけ|〜きる|〜きれない|〜ぬく|〜通す|〜込む|〜出す|〜始める|〜終わる|〜続ける|〜ていく|〜てくる|〜ておく|〜てある|〜てしまう|〜てみる|〜てもらう|〜てくれる|〜ていただく|〜てくださる|〜させてもらう|〜させていただく|〜てもかまわない|〜てはいけない|〜ないで済む|〜ずに済む|〜ずにはいられない|〜ないではいられない|〜てたまらない|〜てならない|〜てしょうがない|〜て仕方がない|〜ないことはない|〜ないわけではない|〜というものではない|〜ものか|〜ことか|〜ことだ|〜ことだから|〜ことなく|〜ことに|〜ことから|〜ことには|〜ものなら|〜ものだから|〜ものの|〜ものを|〜わけにはいかない|〜どんなに〜ことか|〜なんて|〜とは|〜という|〜といった|〜といえば|〜というと|〜といったら|〜にほかならない|〜にすぎない|〜に相違ない|〜に違いない|〜に決まっている|〜に越したことはない|〜ざるを得ない|〜ないわけにはいかない|〜かねない|〜かねる|〜かのようだ|〜かと思うと|〜かと思ったら|〜や否や|〜なり|〜そばから|〜ては|〜てばかりいる|〜ないうちに|〜か〜ないかのうちに|〜を問わず|〜にかかわらず|〜にもかかわらず|〜をものともせず|〜をよそに|〜に先駆けて|〜に至るまで|〜に至って|〜に至る|〜に至っては`.split("|");
 
 function explainGrammar(term) {
-  const key = term.replaceAll("〜", "");
-  const rules = [
-    [/たばかり/, "剛完成：表示某動作剛剛發生不久，說話者把重點放在『才剛……』的時間感。"],
-    [/ばかりだ|一方だ/, "持續變化：表示情況朝單一方向不斷發展，常譯為『一直……下去／越來越……』。"],
-    [/ようとする/, "即將動作：表示正要做某事、試圖做某事，或某狀態快要發生。"],
-    [/ようになる/, "狀態變化：表示能力、習慣或狀態變成現在這樣，常譯為『變得會……／變成……』。"],
-    [/ようにしている/, "習慣努力：表示平常有意識地持續做到某事，常譯為『盡量／固定會……』。"],
-    [/ようにする/, "努力安排：表示刻意做到或避免某事，重點在說話者的控制與安排。"],
-    [/つつ$/, "同時逆接：可表示『一邊……一邊……』的同時動作，也可表示『雖然……卻……』的逆接語氣。"],
-    [/ことになっている/, "規定安排：表示規則、制度或預定安排已經如此決定，不一定是說話者個人決定。"],
-    [/ことにしている/, "個人習慣：表示說話者自己定下並持續實行的習慣或方針。"],
-    [/ことになる/, "客觀決定：表示事情因安排、規則或外在因素而決定成某結果。"],
-    [/ことにする/, "主動決定：表示說話者自己決定要做或不做某事。"],
-    [/ことがある/, "經驗頻率：表示曾有過某經驗，或有時會發生某情況。"],
-    [/ことはない|ないことはない|ないわけではない/, "部分否定：表示不是完全沒有可能或必要，語氣比直接否定更保留。"],
-    [/わけではない|ものではない|というものではない/, "部分否定：否定對方可能推論出的整體結論，常譯為『並不是……』。"],
-    [/わけがない|はずがない|ものか/, "強烈否定：表示說話者認為某事不可能或絕不會如此。"],
-    [/わけにはいかない|ないわけにはいかない|ざるを得ない/, "義務與不得不：表示受情理、責任或情況限制，不能不做或不能那樣做。"],
-    [/わけだ|はずだ|にほかならない|に相違ない/, "推論確定：表示根據前後資訊得出的合理結論或強烈判斷。"],
-    [/べきではない/, "不應該：提出規範性建議，表示某行為不適合或不該做。"],
-    [/べきだ|に越したことはない/, "建議義務：表示應該做某事，或某做法最好、最妥當。"],
-    [/ものだ$/, "一般道理：表示常識、感慨、回想或本來就該如此的性質。"],
-    [/ものだから|ことだから|ことから|ために（原因）|からこそ|からには|以上|上は/, "原因根據：以前項作為理由、背景或既定前提，導出後項判斷或行動。"],
-    [/ということだ|とのことだ|と言われている|そうだ（傳聞）|によると|によれば/, "傳聞引用：表示消息來源或他人說法，重點在資訊不是說話者直接判斷。"],
-    [/とみえる|ようだ|みたいだ|らしい|そうだ（樣態）|っぽい|げ|かのようだ/, "樣態推測：根據外觀、跡象或感受推測狀態，語氣依句型有正式與口語差別。"],
-    [/がちだ|気味だ/, "傾向狀態：表示容易出現某種偏向、稍微帶有某種狀態或不良傾向。"],
-    [/かもしれない|可能性がある|おそれがある|かねない/, "可能風險：表示事情有可能發生；含「おそれ／かねない」時多指不好的結果。"],
-    [/に違いない|に決まっている/, "高度確信：表示說話者很有把握地判斷某事必然如此。"],
-    [/ために（目的）|ように（目的）|ように（祈願）/, "目的願望：表示為達成目標而做某事，或表達希望某狀態實現。"],
-    [/によって|を通じて|を通して|に基づいて/, "手段依據：表示方法、媒介、根據或事情成立的基準。"],
-    [/に対して|について|に関して|をめぐって|にとって|として|において/, "主題立場：標示談論對象、立場、身份或事情發生的範圍。"],
-    [/に応じて|に比べて|に加えて|に反して|にこたえて|に沿って|につれて|にしたがって|にともなって|とともに/, "關聯變化：表示配合、比較、追加、相反或隨著前項而變化。"],
-    [/にかわって|に代わり|かわりに/, "替代交換：表示代替某人事物，或以另一做法交換原本做法。"],
-    [/に限って|に限らず|だけでなく|ばかりでなく|はもちろん|のみならず/, "限定追加：先限定或提出一項，再擴大到其他對象。"],
-    [/さえ|こそ|なんか|など/, "舉例強調：用助詞凸顯最低限、特別強調、輕視或舉例語氣。"],
-    [/にしては|わりに|くせに|にもかかわらず|ながらも|ものの|とはいえ|といっても|からといって|反面|一方で/, "逆接對比：前後內容有預期落差，後項通常是想強調的結果。"],
-    [/たとえ.*ても|としても|にしても|にしろ|にせよ|ても/, "讓步假設：即使承認前項條件，後項仍然成立。"],
-    [/としたら|とすれば|ないことには|ない限り|さえ.*ば|ば.*ほど|なら.*ほど|なら|たら|ば$|と$/, "條件假設：表示前項條件成立時，後項會出現的結果或判斷。"],
-    [/限りでは|限り/, "範圍條件：限定判斷成立的範圍，或表示只要條件持續就會成立。"],
-    [/ほど|くらい|だけあって|だけに|だけのことはある|だけ$/, "程度相稱：表示程度、比例、相稱理由或『正因為如此』的評價。"],
-    [/につき|ごとに|おきに|たびに|たび/, "頻率間隔：表示每隔多久、每次或每逢某情況就會發生。"],
-    [/うちに|間に|間$|ところだ|たところだ|ているところだ|際に|にあたって|に先立って|て以来|てからというもの|最中|途中|ないうちに|か.*ないかのうちに/, "時間關係：指出動作發生的期間、時間點或前後順序。"],
-    [/てからでないと/, "前提順序：表示如果不先完成前項，就無法進行或判斷後項。"],
-    [/をきっかけに|を契機に/, "契機起點：以前項作為開始改變、行動或發展的契機。"],
-    [/次第では|次第で/, "依條件而定：表示結果會隨前項情況、方法或條件改變。"],
-    [/次第だ|次第$/, "立即或經過：可表示『一……就馬上……』，也可說明事情至此的經過。"],
-    [/上で/, "步驟前提：表示先完成前項，再在此基礎上做後項。"],
-    [/上に/, "追加累積：表示不只前項如此，還加上後項。"],
-    [/からして|からすると|から見ると|から言うと/, "判斷角度：表示從某觀點、依據或立場來看。"],
-    [/にしたって|というより|どころか|どころでは/, "對比否定：修正前項說法，或表示程度超出預期、根本不是做某事的狀態。"],
-    [/た末に|あげく|結果/, "結果結局：表示經過一段過程或許多事情後，最後得到某結果。"],
-    [/ところを|ところに|ところへ/, "場面切入：表示在某個時間點或情境中，另一件事介入。"],
-    [/かけ|きる|きれない|ぬく|通す|込む|出す|始める|終わる|続ける/, "複合動詞：接在動詞ます形後，補充開始、完成、持續、徹底或突然出現等動作樣態。"],
-    [/つつある|ていく|てくる/, "變化方向：表示狀態正在發展，或動作方向朝未來、現在、說話者方向移動。"],
-    [/ておく|てある|てしまう|てみる/, "補助動詞：接在て形後，表示預先準備、結果存續、遺憾完成或試著做。"],
-    [/てもらう|てくれる|ていただく|てくださる|させてもらう|させていただく/, "授受表現：表示他人為自己做事，或請求允許自己做事，並帶有恩惠與禮貌差異。"],
-    [/てもかまわない/, "允許許可：表示做某事也可以，語氣比直接命令柔和。"],
-    [/てはいけない/, "禁止：表示不可以做某事，常用於規則、提醒或勸告。"],
-    [/ないで済む|ずに済む/, "免於發生：表示不用做原本可能需要做的事，或避免了不好的結果。"],
-    [/ずにはいられない|ないではいられない/, "忍不住：表示感情或情況強烈到無法不做某事。"],
-    [/てたまらない|てならない|てしょうがない|て仕方がない/, "強烈感受：表示感情、感覺或狀態非常強烈。"],
-    [/ことか|どんなに.*ことか/, "感嘆程度：用反問形式強調程度之高，常譯為『多麼……啊』。"],
-    [/ことだ$/, "建議提醒：用於給建議或說明應該注意的事。"],
-    [/ことなく/, "不做而：表示沒有做前項動作，就進行後項。"],
-    [/ことに$/, "感情評價：放在句首或前項後，表示令人驚訝、遺憾、高興等說話者感受。"],
-    [/ことには$/, "必要條件：表示如果不先做前項，後項就不能成立。"],
-    [/ものなら/, "假設願望：表示如果能做到某事就想做，或帶有挑釁式假設。"],
-    [/ものを/, "遺憾不滿：表示如果前項成真就好了，含責備或惋惜。"],
-    [/なんて|とは$/, "引用驚訝：拿前項內容作為話題，表驚訝、輕視或重新定義。"],
-    [/という|といった|といえば|というと|といったら/, "引用說明：用前項作為名稱、例子或話題，進一步說明後項。"],
-    [/にすぎない/, "程度限定：表示『只不過是……』，把前項程度降到最低。"],
-    [/かねる/, "難以做到：表示因心理、立場或情況上不方便而難以做某事。"],
-    [/かと思うと|かと思ったら|や否や|なり|そばから/, "緊接發生：表示前項剛發生，後項立刻接著出現。"],
-    [/ては|てばかりいる/, "反覆負面：表示同一動作反覆出現，常帶有負面評價。"],
-    [/を問わず|にかかわらず/, "不問條件：表示不受前項差異影響，後項都成立。"],
-    [/をものともせず|をよそに/, "不顧影響：表示不把困難、批評或周圍情況放在心上。"],
-    [/に先駆けて|に至るまで|に至っては|に至って|に至る/, "到達範圍：表示時間、程度或範圍發展到某個階段。"],
-  ];
-  return rules.find(([pattern]) => pattern.test(key))?.[1] || `補充語氣：說明「${term}」在句中連接前後內容，補充說話者的判斷、態度或兩件事情的關係。`;
+  const entry = grammarZh[term];
+  if (!entry?.meaning) throw new Error("文法句型缺少語意說明：" + term);
+  return entry.meaning;
 }
 
 function grammarUsageZh(term) {
-  const pattern = term.replaceAll("〜", "").replace(/[（(].*?[）)]/g, "");
-  let connection = "普通形（名詞／形容詞／動詞的接法依句型調整）";
-  if (/^(うちに|間に?|最中|際に)/.test(pattern)) connection = "名詞＋の／動詞普通形；な形容詞＋な；い形容詞普通形";
-  else if (/^(ところだ|たところだ|ているところだ)/.test(pattern)) connection = "動詞辭書形／た形／ている形；時態不同會改變『正要、正在、剛做完』";
-  else if (/^ばかりだ/.test(pattern)) connection = "動詞辭書形＋ばかりだ；表示變化持續朝同一方向發展";
-  else if (/^たばかり/.test(pattern)) connection = "動詞た形＋ばかり；表示動作剛完成不久";
-  else if (/^ようとする/.test(pattern)) connection = "動詞意向形＋とする；表示正要做或試圖做";
-  else if (/^ようになる/.test(pattern)) connection = "動詞辭書形／ない形＋ようになる；常接可能形，表示能力或狀態變化";
-  else if (/^(ようにする|ようにしている)/.test(pattern)) connection = "動詞辭書形／ない形＋ようにする；表示刻意做到、避免或持續努力";
-  else if (/^(ことになる|ことにする|ことになっている|ことにしている)/.test(pattern)) connection = "動詞辭書形／ない形＋こと；注意客觀決定與主動決定的差別";
-  else if (/^つつある/.test(pattern)) connection = "動詞ます形去掉「ます」＋つつある；表示狀態正在逐漸變化";
-  else if (/^つつ/.test(pattern)) connection = "動詞ます形去掉「ます」＋つつ；表示同時動作或逆接";
-  else if (/^どころ/.test(pattern)) connection = "名詞／動詞辭書形＋どころではない・どころか；表示不是那種程度或根本無暇顧及";
-  else if (/^を問わず/.test(pattern)) connection = "名詞＋を問わず；表示不受年齡、性別、天候等差異限制";
-  else if (/^にかかわらず/.test(pattern)) connection = "名詞＋にかかわらず；或普通形＋かかわらず，表示不受前項影響";
-  else if (/^をものともせず|^をよそに/.test(pattern)) connection = "名詞＋をものともせず／をよそに；表示不顧困難或周圍情況";
-  else if (/^に至/.test(pattern)) connection = "名詞＋に至る／に至って；表示到達某階段、程度或範圍";
-  else if (/^(に|を|として|とともに|からして|からすると|から見ると|から言うと|というより|どころ)/.test(pattern)) connection = "名詞或普通形＋指定助詞句；依句型確認是否需要「の／な／だ」";
-  else if (/^(だけ|ほど|くらい|ごとに|おきに|たび|につき)/.test(pattern)) connection = "名詞／動詞普通形＋句型；表示程度、頻率或相稱關係";
-  else if (/^(上で|上に|上は|以上|からには)/.test(pattern)) connection = "動詞普通形／た形＋上で；或普通形＋以上・からには，表示前提";
-  else if (/^(次第|次第で|次第だ|次第では)/.test(pattern)) connection = "動詞ます形去掉「ます」＋次第；或名詞＋次第で／次第では";
-  else if (/^(かけ|きる|きれない|ぬく|通す|込む|出す|始める|終わる|続ける)/.test(pattern)) connection = "動詞ます形去掉「ます」＋複合動詞";
-  else if (/^(て|でも|ても|ては|てこそ)/.test(pattern) || /^させて|^ないで済む|^ずに済む|^ずには|^ないでは|^てたまらない|^てならない|^てしょうがない|^て仕方/.test(pattern)) connection = "動詞て形／ない形的固定接續；注意肯定、否定與授受敬語差異";
-  else if (/^(ない|ず|ぬ|ざる)/.test(pattern)) connection = "動詞ない形；「ず／ぬ／ざる」使用書面否定形";
-  else if (/^(た|て以来|てから)/.test(pattern)) connection = "動詞た形或て形，依時間先後判斷";
-  else if (/^(ば|なら|たら|と)$|さえ.*ば|ば.*ほど/.test(pattern)) connection = "條件形（ば／たら／なら／と）";
-  else if (/(について|に関して|に対して|にとって|において|をめぐって|に基づいて|に応じて|に比べて|に加えて|に反して|にかわって|に沿って|につれて|にしたがって|にともなって|に限って|に限らず|にわたって|を通じて|を通して|をきっかけに|を契機に|を問わず|をものともせず|をよそに)/.test(pattern)) connection = "名詞＋助詞句";
-  else if (/(ために|ように)/.test(pattern)) connection = "動詞辭書形／ない形＋ために・ように；名詞＋の＋ために";
-  else if (/(かもしれない|に違いない|に決まっている|おそれがある|可能性がある|かねない|かねる)/.test(pattern)) connection = "普通形＋推量表現；名詞與な形容詞接續依句型調整";
-  else if (/(とは|なんて|という|といった|といえば|というと|といったら|とのことだ|と言われている)/.test(pattern)) connection = "引用內容＋と／という；可接句子、名詞或完整發話內容";
-  else if (/(ものなら|ものだから|ものの|ものを|ものか|ことか|ことだ|ことなく|ことに|ことには)/.test(pattern)) connection = "普通形＋こと／もの；名詞與な形容詞須注意「の／な／である」";
-  else if (/(こと|もの|わけ|はず|べき|よう|そう|らしい|みたい)/.test(pattern)) connection = "動詞／形容詞普通形；名詞與な形容詞須注意「だ／な／の」變化";
-  return `主要接續：${connection}。判讀時先找出前項詞性，再確認後項是在表達時間、原因、條件、範圍、推測或說話者態度；例句與句型一起朗讀記憶。`;
+  const entry = grammarZh[term];
+  if (!entry?.usage) throw new Error("文法句型缺少接續說明：" + term);
+  return entry.usage;
 }
+
 function grammarAudioText(term) {
   return term.replace(/[〜～]/g, "").replace(/[（(][^）)]*[）)]/g, "").trim();
 }
