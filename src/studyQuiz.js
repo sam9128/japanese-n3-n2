@@ -80,12 +80,21 @@ export function pickQuizItems({
   return picked;
 }
 
+// A question's wrong answers must come from its own category. Mixing 單字 meanings
+// into a 文法 question makes it answerable on shape alone — the learner spots the
+// one option phrased like a grammar note and never reads the others.
+export function categoryDistractors(item, allCandidates = []) {
+  return allCandidates.filter(
+    (candidate) =>
+      candidate?.id !== item.id && candidate?.category === item.category,
+  );
+}
+
 export function buildQuizQuestion(item, allCandidates, random = Math.random) {
   const correctMeaning = item.meaningZh || item.usageZh || "";
   const distractors = Array.from(
     new Map(
-      allCandidates
-        .filter((candidate) => candidate?.id !== item.id)
+      categoryDistractors(item, allCandidates)
         .map((candidate) => [candidate.meaningZh || candidate.usageZh, candidate])
         .filter(([meaning]) => meaning && meaning !== correctMeaning),
     ).keys(),
@@ -121,8 +130,20 @@ export function buildStudyQuiz({
     recentQuizRounds,
     random,
   });
-  return quizItems.map((item) =>
-    buildQuizQuestion(item, allCandidates?.length ? allCandidates : pool, random),
+  return (
+    quizItems
+      .map((item) =>
+        buildQuizQuestion(
+          item,
+          allCandidates?.length ? allCandidates : pool,
+          random,
+        ),
+      )
+      // Staying inside one category can leave a question with no wrong answer to
+      // offer — early in a month there may be only a handful of 文法 cards. A
+      // single-option question is not a question, so drop it rather than pad it
+      // with 單字 meanings.
+      .filter((question) => question.options.length >= 2)
   );
 }
 

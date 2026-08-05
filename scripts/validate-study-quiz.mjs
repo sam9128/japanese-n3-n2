@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
+  buildQuizQuestion,
   buildStudyQuiz,
+  categoryDistractors,
   pickQuizItems,
   quizWeight,
   rememberQuizRound,
@@ -69,6 +71,59 @@ assert.deepEqual(
   picked.map((item) => item.id),
   ["card-4", "card-5", "card-6"],
   "最近 3 輪內出現過的題目應優先排除",
+);
+
+// --------------------------------------------------- distractors stay in-category
+// A 文法 question offering 單字 meanings can be answered on shape alone, so every
+// wrong answer must come from the same category as the item being tested.
+const grammarCard = cards.find((card) => card.category === "grammar");
+const vocabCard = cards.find((card) => card.category === "vocab");
+
+assert.ok(
+  categoryDistractors(grammarCard, cards).every(
+    (card) => card.category === "grammar",
+  ),
+  "文法題的干擾選項只能取自文法",
+);
+assert.ok(
+  categoryDistractors(vocabCard, cards).every(
+    (card) => card.category === "vocab",
+  ),
+  "單字題的干擾選項只能取自單字",
+);
+assert.ok(
+  categoryDistractors(grammarCard, cards).every(
+    (card) => card.id !== grammarCard.id,
+  ),
+  "干擾選項不可包含題目本身",
+);
+
+const grammarMeanings = new Set(
+  cards.filter((card) => card.category === "grammar").map((card) => card.meaningZh),
+);
+const grammarQuestion = buildQuizQuestion(grammarCard, cards, () => 0.4);
+assert.ok(
+  grammarQuestion.options.every((option) => grammarMeanings.has(option)),
+  "文法題的所有選項都必須是文法解釋",
+);
+assert.ok(
+  grammarQuestion.options.includes(grammarQuestion.correctMeaning),
+  "文法題仍必須包含正解",
+);
+
+// With only one grammar card there is no wrong answer to offer, and a
+// single-option question is not a question — it must be dropped, not padded
+// with 單字 meanings.
+const lonely = [grammarCard, ...cards.filter((card) => card.category === "vocab")];
+assert.equal(
+  buildStudyQuiz({
+    pool: [grammarCard],
+    allCandidates: lonely,
+    progress: {},
+    random: () => 0.1,
+  }).length,
+  0,
+  "同類干擾選項不足時應略過該題，而非混入單字",
 );
 
 const remembered = rememberQuizRound(recentQuizRounds, ["card-7"]);
