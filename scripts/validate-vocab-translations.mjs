@@ -54,6 +54,58 @@ if (vocabulary.length !== 4000) {
   failures.push({ reason: `vocabulary count ${vocabulary.length}, expected 4000` });
 }
 
+// Every card used to carry the same sentence: "本句使用「X」表達「Y」。請觀察它和
+// 前後詞語的搭配。" Explanations are now shaped by part of speech and carry the
+// word's own reading and sense, so they should be near-unique.
+const explanations = vocabulary.map((item) => item.examples?.[0]?.explanationZh || "");
+const uniqueExplanations = new Set(explanations).size;
+if (uniqueExplanations < vocabulary.length * 0.95) {
+  failures.push({
+    reason: `example explanations too repetitive: ${uniqueExplanations} unique of ${vocabulary.length}`,
+  });
+}
+
+// The example must actually demonstrate the word it is filed under. Substring
+// matching alone let バック (rear) be illustrated by a sentence about a bag, so
+// the meaning is spot-checked against the headword too.
+for (const item of vocabulary) {
+  const example = item.examples?.[0];
+  if (!example?.ja) {
+    failures.push({ id: item.id, term: item.term, reason: "missing example sentence" });
+    continue;
+  }
+  if (!example.ja.includes(item.term) && !example.ja.includes(item.reading)) {
+    failures.push({
+      id: item.id,
+      term: item.term,
+      reason: "example does not contain the headword",
+      example: example.ja,
+    });
+  }
+  if (!example.zh || !/[㐀-鿿]/.test(example.zh)) {
+    failures.push({ id: item.id, term: item.term, reason: "example lacks a Chinese translation" });
+  }
+}
+
+// A meaning shared by more than two ids means the list is carrying duplicates.
+const meaningCounts = new Map();
+for (const item of vocabulary) {
+  meaningCounts.set(item.meaningZh, (meaningCounts.get(item.meaningZh) || 0) + 1);
+}
+const overshared = [...meaningCounts.entries()].filter(([, count]) => count > 2);
+if (overshared.length) {
+  failures.push({
+    reason: "meaning shared by more than two entries",
+    samples: overshared.slice(0, 5).map(([meaning, count]) => ({ count, meaning })),
+  });
+}
+
+// Distinct words, not distinct spellings of the same word.
+const terms = new Set(vocabulary.map((item) => item.term));
+if (terms.size !== vocabulary.length) {
+  failures.push({ reason: `duplicate headwords: ${vocabulary.length - terms.size}` });
+}
+
 if (failures.length) {
   console.error(JSON.stringify({ ok: false, failures: failures.slice(0, 80), failureCount: failures.length }, null, 2));
   process.exit(1);

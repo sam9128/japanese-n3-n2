@@ -17,7 +17,10 @@
     "validate:grammar": "node scripts/validate-grammar-content.mjs",
     "validate:progress": "node scripts/validate-daily-progress.mjs",
     "validate:sync": "node scripts/validate-sync.mjs",
-    "validate:study-quiz": "node scripts/validate-study-quiz.mjs"
+    "validate:study-quiz": "node scripts/validate-study-quiz.mjs",
+    "validate:unlock-rules": "node scripts/validate-unlock-rules.mjs",
+    "validate:readings": "node scripts/validate-readings.mjs",
+    "validate:all": "node scripts/validate-all.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

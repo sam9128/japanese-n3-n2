@@ -48,8 +48,24 @@ for (const item of grammar) {
 }
 
 if (grammar.length !== 240) failures.push({ reason: `grammar count ${grammar.length}, expected 240` });
-if (meanings.size < 40) failures.push({ reason: `grammar meanings too repetitive: ${meanings.size} unique explanations` });
-if (usages.size < 20) failures.push({ reason: `grammar usage notes too repetitive: ${usages.size} unique notes` });
+// These thresholds used to be 40 and 20, which happily passed data where one
+// blurb covered 16 patterns and 〜うちに and 〜間に read identically. Each pattern
+// is written individually now, so near-total uniqueness is the real bar.
+if (meanings.size < 230) {
+  failures.push({ reason: `grammar meanings too repetitive: ${meanings.size} unique explanations, expected >= 230` });
+}
+if (usages.size < 230) {
+  failures.push({ reason: `grammar usage notes too repetitive: ${usages.size} unique notes, expected >= 230` });
+}
+// The old connection note listed every possible part of speech for every
+// pattern, which told the learner nothing.
+const sharedUsage = [...usages.entries()].filter(([, count]) => count > 3);
+if (sharedUsage.length) {
+  failures.push({
+    reason: "connection note shared by more than three patterns",
+    samples: sharedUsage.slice(0, 3).map(([note, count]) => ({ count, note: note.slice(0, 60) })),
+  });
+}
 
 if (failures.length) {
   console.error(

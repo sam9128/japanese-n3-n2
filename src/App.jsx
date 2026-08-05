@@ -17,6 +17,7 @@ import {
 } from "./db";
 import { getJapaneseVoices, speakJapanese, stopSpeech } from "./speech";
 import { calculateDailyProgress } from "./dailyProgress";
+import { planToday, unlockedThrough as unlockedThroughFor } from "./unlockSchedule";
 import DriveSyncPanel from "./DriveSyncPanel";
 import { buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
 import {
@@ -52,6 +53,7 @@ const DEFAULT_PAGE_STATES = {
     seenByBatch: {},
     quiz: null,
     recentQuizRounds: [],
+    reviewRound: 0,
   },
   library: {
     query: "",
@@ -90,11 +92,20 @@ function mergeUiSession(saved, defaultPeriod) {
       { ...value, ...(saved?.pages?.[key] || {}) },
     ]),
   );
+  // `viewPeriod` is only which month the learner is browsing. It used to be
+  // called activePeriod and also decided what was unlocked, which meant a saved
+  // session pinned the learner to the month they first opened the app. Unlocking
+  // is now derived from the date; this value is clamped so a stale saved session
+  // (or one restored from Drive) can never point past the real current month.
+  const savedPeriod = saved?.viewPeriod ?? saved?.activePeriod;
+  const candidate = PERIODS.includes(savedPeriod) ? savedPeriod : defaultPeriod;
+  const viewPeriod =
+    PERIODS.indexOf(candidate) > PERIODS.indexOf(defaultPeriod)
+      ? defaultPeriod
+      : candidate;
   return {
     view: NAV.some(([id]) => id === saved?.view) ? saved.view : "today",
-    activePeriod: PERIODS.includes(saved?.activePeriod)
-      ? saved.activePeriod
-      : defaultPeriod,
+    viewPeriod,
     pages,
     updatedAt: saved?.updatedAt || new Date(0).toISOString(),
   };
@@ -166,27 +177,60 @@ function useUiSession(defaultPeriod) {
       })),
     [],
   );
-  const setActivePeriod = useCallback(
-    (activePeriod) =>
+  const setViewPeriod = useCallback(
+    (viewPeriod) =>
       setSession((current) => ({
         ...current,
-        activePeriod,
+        viewPeriod,
         updatedAt: new Date().toISOString(),
       })),
     [],
   );
-  return { session, ready, updatePage, setView, setActivePeriod };
+  return { session, ready, updatePage, setView, setViewPeriod };
 }
 
-function buildDailyBatches(vocabulary, grammar) {
-  const count = Math.max(
-    Math.ceil(vocabulary.length / 6),
-    Math.ceil(grammar.length / 3),
-  );
-  return Array.from({ length: count }, (_, index) => [
-    ...vocabulary.slice(index * 6, index * 6 + 6),
-    ...grammar.slice(index * 3, index * 3 + 3),
-  ]).filter((batch) => batch.length);
+// Re-derives the unlocked period from the clock so a month or week boundary takes
+// effect on a session that is simply left open, without a reload.
+function useUnlockedThrough() {
+  const [period, setPeriod] = useState(() => unlockedThroughFor());
+  useEffect(() => {
+    const tick = () => {
+      const next = unlockedThroughFor();
+      setPeriod((current) => (current === next ? current : next));
+    };
+    const timer = setInterval(tick, 60000);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+    };
+  }, []);
+  return period;
+}
+
+// The clock value the weekly cap is measured against. Kept in state for the same
+// reason: crossing Monday midnight must lift the cap on an open session.
+function useToday() {
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    const tick = () => {
+      const next = new Date();
+      setToday((current) =>
+        current.toDateString() === next.toDateString() ? current : next,
+      );
+    };
+    const timer = setInterval(tick, 60000);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+    };
+  }, []);
+  return today;
 }
 
 function StudyQuizPanel({
@@ -518,8 +562,8 @@ function DailyPaceCard({ pace, compact = false }) {
   );
 }
 
-function PeriodRail({ activePeriod, setActivePeriod, data }) {
-  const currentIndex = PERIODS.indexOf(currentRocPeriod());
+function PeriodRail({ viewPeriod, setViewPeriod, unlockedThrough, data }) {
+  const currentIndex = PERIODS.indexOf(unlockedThrough);
   return (
     <aside className="period-rail">
       <div>
@@ -532,8 +576,8 @@ function PeriodRail({ activePeriod, setActivePeriod, data }) {
           <button
             key={period}
             disabled={locked}
-            className={period === activePeriod ? "active" : ""}
-            onClick={() => !locked && setActivePeriod(period)}
+            className={period === viewPeriod ? "active" : ""}
+            onClick={() => !locked && setViewPeriod(period)}
           >
             <span>{formatPeriod(period)}</span>
             <b>{locked ? "鎖定" : i < 6 ? "N3" : "N2"}</b>
@@ -545,7 +589,7 @@ function PeriodRail({ activePeriod, setActivePeriod, data }) {
         <br />
         <strong>
           {data.vocabulary
-            .filter((x) => isUnlocked(x, activePeriod))
+            .filter((x) => isUnlocked(x, unlockedThrough))
             .length.toLocaleString()}
         </strong>{" "}
         單字
@@ -554,9 +598,35 @@ function PeriodRail({ activePeriod, setActivePeriod, data }) {
   );
 }
 
+function MediaShortcuts({ goMedia, unlocked, children }) {
+  return (
+    <aside className="today-side">
+      <h3>接下來</h3>
+      <button className="task" onClick={() => goMedia("reading")}>
+        <b>08 分</b>
+        <span>
+          閱讀理解
+          <br />
+          <small>{unlocked.r[0]?.term || "本月閱讀"}</small>
+        </span>
+      </button>
+      <button className="task" onClick={() => goMedia("listening")}>
+        <b>06 分</b>
+        <span>
+          逐句聽力
+          <br />
+          <small>{unlocked.l[0]?.term || "本月聽力"}</small>
+        </span>
+      </button>
+      {children}
+    </aside>
+  );
+}
+
 function TodayView({
   data,
   activePeriod,
+  today,
   store,
   settings,
   goMedia,
@@ -573,24 +643,17 @@ function TodayView({
     }),
     [data, activePeriod],
   );
-  const batches = useMemo(
-    () => buildDailyBatches(unlocked.v, unlocked.g),
-    [unlocked.v, unlocked.g],
+  const plan = useMemo(
+    () =>
+      planToday({
+        vocabulary: unlocked.v,
+        grammar: unlocked.g,
+        isMastered: (item) => STRONG_RATINGS.has(store.progress[item.id]?.rating),
+        date: today,
+      }),
+    [unlocked.v, unlocked.g, store.progress, today],
   );
-  const batchIndex = useMemo(() => {
-    let completed = 0;
-    for (const batch of batches) {
-      if (
-        !batch.every((item) =>
-          STRONG_RATINGS.has(store.progress[item.id]?.rating),
-        )
-      )
-        break;
-      completed += 1;
-    }
-    return completed;
-  }, [batches, store.progress]);
-  const cards = batches[batchIndex] || [];
+  const { batches, batchIndex, cards, reviewMode, reviewReason } = plan;
   const completedInBatch = cards.filter((item) =>
     STRONG_RATINGS.has(store.progress[item.id]?.rating),
   ).length;
@@ -598,7 +661,13 @@ function TodayView({
   const revealed = Boolean(pageState.revealed);
   const [notice, setNotice] = useState("");
   const card = cards[index % Math.max(1, cards.length)];
-  const batchKey = `${activePeriod}:${batchIndex}`;
+  // In review mode each finished round bumps the counter, which changes the key
+  // and lets the quiz effect below start a fresh round — the endless loop that
+  // runs until Monday raises the weekly cap.
+  const reviewRound = Number(pageState.reviewRound) || 0;
+  const batchKey = reviewMode
+    ? `${activePeriod}:review:${reviewRound}`
+    : `${activePeriod}:${batchIndex}`;
   const activeQuiz =
     pageState.quiz?.batchKey === batchKey ? pageState.quiz : null;
   const seenByBatch = pageState.seenByBatch || {};
@@ -682,6 +751,41 @@ function TodayView({
     store.progress,
     updatePage,
   ]);
+  // Review mode has no cards to reveal, so the quiz starts straight away and a
+  // new round begins as soon as the previous one is finished.
+  useEffect(() => {
+    if (!reviewMode || activeQuiz) return;
+    const questions = buildStudyQuiz({
+      pool: learnedQuizPool.length ? learnedQuizPool : quizCandidates,
+      allCandidates: quizCandidates,
+      progress: store.progress,
+      recentQuizRounds: pageState.recentQuizRounds || [],
+    });
+    if (!questions.length) return;
+    updatePage((current) => {
+      if (current.quiz?.batchKey === batchKey) return current;
+      return {
+        ...current,
+        quiz: {
+          id: crypto.randomUUID(),
+          batchKey,
+          questions,
+          current: 0,
+          answers: {},
+          startedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }, [
+    reviewMode,
+    activeQuiz,
+    batchKey,
+    learnedQuizPool,
+    pageState.recentQuizRounds,
+    quizCandidates,
+    store.progress,
+    updatePage,
+  ]);
   const answerQuiz = useCallback(
     async (selectedIndex) => {
       const quiz = pageState.quiz;
@@ -738,13 +842,18 @@ function TodayView({
         quiz: null,
         revealed: false,
         seenByBatch: nextSeenByBatch,
+        // Bumping the round is what makes review mode loop: the key changes, so
+        // the effect above immediately builds the next set of questions.
+        reviewRound: reviewMode
+          ? (Number(current.reviewRound) || 0) + 1
+          : current.reviewRound,
         recentQuizRounds: rememberQuizRound(
           current.recentQuizRounds || [],
           itemIds || [],
         ),
       };
     });
-  }, [batchKey, updatePage]);
+  }, [batchKey, reviewMode, updatePage]);
   async function rate(value) {
     const willAdvance =
       STRONG_RATINGS.has(value) &&
@@ -759,10 +868,14 @@ function TodayView({
     });
     if (willAdvance) {
       updatePage((current) => ({ ...current, index: 0, revealed: false }));
+      const hasNextBatch = Boolean(batches[batchIndex + 1]?.length);
+      const withinWeeklyCap = batchIndex + 1 < plan.allowedBatches;
       setNotice(
-        batches[batchIndex + 1]?.length
+        hasNextBatch && withinWeeklyCap
           ? `本批次全部達到「記得」以上，已自動開放第 ${batchIndex + 2} 批新內容。`
-          : "目前開放的教材已全部完成！",
+          : hasNextBatch
+            ? "本批完成，但已達本週開放上限；先進入複習模式，下週一自動開放新進度。"
+            : "目前開放的教材已全部完成！",
       );
     } else {
       setNotice("");
@@ -773,24 +886,55 @@ function TodayView({
       }));
     }
   }
-  if (!card)
+  if (!card) {
+    const nextUnlock = plan.nextUnlockAt;
+    const nextUnlockText = `${nextUnlock.getMonth() + 1} 月 ${nextUnlock.getDate()} 日（週一）`;
     return (
       <section className="today-view">
         <div className="page-intro">
           <div>
             <span className="eyebrow">
-              TODAY · {formatPeriod(activePeriod)}
+              TODAY · {formatPeriod(activePeriod)} ·{" "}
+              {reviewMode ? `複習第 ${reviewRound + 1} 輪` : "已完成"}
             </span>
-            <h1>目前教材已全部完成。</h1>
+            <h1>
+              {reviewReason === "week"
+                ? "本週的新教材已全部開放。"
+                : "本月教材已全部完成。"}
+            </h1>
             <p>
-              你已將所有開放內容標記為「記得」或「很熟」，可以前往閱讀聽力繼續練習。
+              {reviewReason === "week"
+                ? `每週上限為 ${plan.allowance.vocabulary} 個單字、${plan.allowance.grammar} 條文法（累計至第 ${plan.allowance.week} 週）。接下來進入複習模式，小測驗會一輪接一輪，直到 ${nextUnlockText} 自動開放新進度。`
+                : "你已把本月開放的內容全部標記為「記得」以上。先用小測驗保持手感，下個月會自動開放新教材。"}
             </p>
+          </div>
+          <div className="today-ring">
+            <strong>{reviewRound + 1}</strong>
+            <span>輪</span>
+            <small>複習中</small>
           </div>
         </div>
         <DailyPaceCard pace={dailyPace} />
-        <Empty text="太棒了，等待下一階段解鎖吧！" />
+        <div className="week-card unlock-notice" role="status">
+          ↻ 複習模式：{reviewReason === "week" ? `${nextUnlockText} 自動開放新教材` : "等待下個月解鎖"}
+        </div>
+        <div className="dashboard-grid">
+          {activeQuiz ? (
+            <StudyQuizPanel
+              quiz={activeQuiz}
+              settings={settings}
+              onAnswer={answerQuiz}
+              onNext={nextQuizQuestion}
+              onFinish={finishQuiz}
+            />
+          ) : (
+            <Empty text="正在準備下一輪小測驗…" />
+          )}
+          <MediaShortcuts goMedia={goMedia} unlocked={unlocked} />
+        </div>
       </section>
     );
+  }
   return (
     <section className="today-view">
       <div className="page-intro">
@@ -897,32 +1041,18 @@ function TodayView({
           </footer>
           </div>
         )}
-        <aside className="today-side">
-          <h3>接下來</h3>
-          <button className="task" onClick={() => goMedia("reading")}>
-            <b>08 分</b>
-            <span>
-              閱讀理解
-              <br />
-              <small>{unlocked.r[0]?.term || "本月閱讀"}</small>
-            </span>
-          </button>
-          <button className="task" onClick={() => goMedia("listening")}>
-            <b>06 分</b>
-            <span>
-              逐句聽力
-              <br />
-              <small>{unlocked.l[0]?.term || "本月聽力"}</small>
-            </span>
-          </button>
+        <MediaShortcuts goMedia={goMedia} unlocked={unlocked}>
           <div className="week-card">
             <span>自動解鎖</span>
             <strong>
               {completedInBatch} / {cards.length} 張達標
             </strong>
-            <p>本批全部達到「記得」以上，就會立即開放下一批新內容。</p>
+            <p>
+              本批全部達到「記得」以上就立即開放下一批，直到用完本週上限
+              {plan.allowance.vocabulary} 個單字、{plan.allowance.grammar} 條文法。
+            </p>
           </div>
-        </aside>
+        </MediaShortcuts>
       </div>
     </section>
   );
@@ -2510,15 +2640,16 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [topbarCollapsed, setTopbarCollapsed] = useState(false);
   const drive = useGoogleDriveSync();
-  const now = currentRocPeriod();
-  const defaultPeriod = PERIODS.includes(now) ? now : PERIODS[0];
+  // Derived from the clock every minute; never read from the saved session.
+  const unlockedThrough = useUnlockedThrough();
+  const today = useToday();
   const {
     session,
     ready: sessionReady,
     updatePage,
     setView,
-    setActivePeriod,
-  } = useUiSession(defaultPeriod);
+    setViewPeriod,
+  } = useUiSession(unlockedThrough);
   const [settings, setSettings] = useState({ rate: 0.85, voiceURI: "" });
   const [settingsReady, setSettingsReady] = useState(false);
   const {
@@ -2545,7 +2676,9 @@ export default function App() {
     [updatePage],
   );
   const view = session.view;
-  const activePeriod = session.activePeriod;
+  // Browsing selection for the library / media / mock / progress pages. Today's
+  // study always runs off unlockedThrough instead.
+  const viewPeriod = session.viewPeriod;
   const dailyPace = useMemo(
     () => calculateDailyProgress(data, store.progress, new Date(), scheduleSettings),
     [data, store.progress, scheduleSettings],
@@ -2631,15 +2764,17 @@ export default function App() {
       />
       <div className="app-body">
         <PeriodRail
-          activePeriod={activePeriod}
-          setActivePeriod={setActivePeriod}
+          viewPeriod={viewPeriod}
+          setViewPeriod={setViewPeriod}
+          unlockedThrough={unlockedThrough}
           data={data}
         />
         <main>
           {view === "today" && (
             <TodayView
               data={data}
-              activePeriod={activePeriod}
+              activePeriod={unlockedThrough}
+              today={today}
               store={store}
               settings={settings}
               pageState={session.pages.today}
@@ -2659,7 +2794,7 @@ export default function App() {
           {view === "library" && (
             <LibraryView
               data={data}
-              activePeriod={activePeriod}
+              activePeriod={viewPeriod}
               store={store}
               settings={settings}
               pageState={session.pages.library}
@@ -2669,7 +2804,7 @@ export default function App() {
           {view === "media" && (
             <MediaView
               data={data}
-              activePeriod={activePeriod}
+              activePeriod={viewPeriod}
               settings={settings}
               store={store}
               pageState={session.pages.media}
@@ -2679,7 +2814,7 @@ export default function App() {
           {view === "mock" && (
             <MockView
               data={data}
-              activePeriod={activePeriod}
+              activePeriod={viewPeriod}
               store={store}
               settings={settings}
               pageState={session.pages.mock}
@@ -2689,7 +2824,7 @@ export default function App() {
           {view === "progress" && (
             <ProgressView
               data={data}
-              activePeriod={activePeriod}
+              activePeriod={viewPeriod}
               store={store}
               pageState={session.pages.progress}
               updatePage={pageActions.progress}
