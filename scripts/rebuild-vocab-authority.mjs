@@ -105,7 +105,12 @@ function resolve(term, meaningEn) {
 // Which written form the learner should see on the card.
 function canonicalForm(entry, originalTerm = "") {
   const firstSenseIsKana = entry.senses[0]?.misc.includes("uk");
-  const goodKanji = entry.kanji.filter((k) => !k.inf.some((i) => BAD_KE_INF.has(i)));
+  // JMdict lists some loanwords under a full-width Latin headword (ＦＡＸ, ＯＵＴ).
+  // The katakana reading is what a learner needs to produce, and a Latin headword
+  // also trips the "options must be Japanese" check in the exam audit.
+  const goodKanji = entry.kanji
+    .filter((k) => !k.inf.some((i) => BAD_KE_INF.has(i)))
+    .filter((k) => /[぀-ヿ一-龯]/.test(k.t));
   if (goodKanji.length && !firstSenseIsKana) return goodKanji[0].t;
   const goodReadings = entry.readings.filter((r) => !r.inf?.some?.((i) => BAD_RE_INF.has(i)));
   const pool = goodReadings.length ? goodReadings : entry.readings;

@@ -29636,7 +29636,7 @@
   "id": "vocab-0549",
   "seq": 1335290,
   "level": "N3",
-  "term": "いとこ",
+  "term": "従兄弟",
   "reading": "いとこ",
   "senses": [
    {
@@ -78286,7 +78286,7 @@
   "id": "vocab-1511",
   "seq": 1108180,
   "level": "N3",
-  "term": "ＦＡＸ",
+  "term": "ファックス",
   "reading": "ファックス",
   "senses": [
    {
@@ -87742,7 +87742,7 @@
   "id": "vocab-1709",
   "seq": 1549860,
   "level": "N2",
-  "term": "なし",
+  "term": "梨",
   "reading": "なし",
   "senses": [
    {
@@ -97654,7 +97654,7 @@
   "id": "vocab-1927",
   "seq": 1238460,
   "level": "N2",
-  "term": "そば",
+  "term": "蕎麦",
   "reading": "そば",
   "senses": [
    {
@@ -123238,8 +123238,8 @@
   "id": "vocab-2487",
   "seq": 1411550,
   "level": "N2",
-  "term": "タイ",
-  "reading": "タイ",
+  "term": "鯛",
+  "reading": "たい",
   "senses": [
    {
     "pos": [
@@ -141561,7 +141561,7 @@
   "id": "vocab-2896",
   "seq": 1335310,
   "level": "N2",
-  "term": "いとこ",
+  "term": "従姉妹",
   "reading": "いとこ",
   "senses": [
    {
@@ -176564,7 +176564,7 @@
   "id": "vocab-3602",
   "seq": 1014680,
   "level": "N2",
-  "term": "ＯＵＴ",
+  "term": "アウト",
   "reading": "アウト",
   "senses": [
    {

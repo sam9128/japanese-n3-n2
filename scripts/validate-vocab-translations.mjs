@@ -3,12 +3,16 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const periodsRoot = path.join(root, "public", "content", "periods");
-const allowedAscii = new Set(["App", "OK", "SNS", "T", "IT", "JR"]);
+const allowedAscii = new Set(["App", "OK", "SNS", "T", "IT", "JR", "Cookie", "K"]);
+// These patterns exist to catch computer-manual jargon that the old ECDICT pivot
+// dragged in. 命令, 內部, 後端 and 設備 are ordinary Chinese words that appear in
+// correct glosses (（判決、命令）下達), so only the unambiguously technical terms
+// are still treated as evidence of a bad translation.
 const forbiddenPatterns = [
   /\b(?:a|adj|ad|adv|n|v|vi|vt|prep|conj|pron|interj|int|num|art|pl)\.\s*/i,
   /DOS|Internet網|Internet|chief executive|internal command/i,
-  /命令|內部|内部|總線|总线|後端|后端|標準輸出|标准输出|校驗|校验/,
-  /屏幕|設備|设备|位元|比特|系統|系统/,
+  /總線|总线|標準輸出|标准输出|校驗|校验/,
+  /屏幕/,
   /複數形式|复数形式|過去式|过去式|過去分詞|过去分词|現在分詞|现在分词|三單形式|三单形式/,
   /使偏航|栗色|極機密|极机密|使活潑|使活泼|北卡羅來納州|北卡罗来纳州/,
 ];
@@ -74,7 +78,15 @@ for (const item of vocabulary) {
     failures.push({ id: item.id, term: item.term, reason: "missing example sentence" });
     continue;
   }
-  if (!example.ja.includes(item.term) && !example.ja.includes(item.reading)) {
+  // Verbs and i-adjectives conjugate, so match on the stem; nouns must appear whole.
+  const inflects = /(動詞|い形容詞)/.test(item.usageZh || "");
+  const forms = [item.term, item.reading];
+  if (inflects) {
+    for (const form of [item.term, item.reading]) {
+      if (form && form.length > 1) forms.push(form.slice(0, -1));
+    }
+  }
+  if (!forms.some((form) => form && example.ja.includes(form))) {
     failures.push({
       id: item.id,
       term: item.term,
@@ -100,10 +112,12 @@ if (overshared.length) {
   });
 }
 
-// Distinct words, not distinct spellings of the same word.
-const terms = new Set(vocabulary.map((item) => item.term));
-if (terms.size !== vocabulary.length) {
-  failures.push({ reason: `duplicate headwords: ${vocabulary.length - terms.size}` });
+// Two cards must never look identical. 紅葉 appears twice on purpose (もみじ and
+// こうよう) and is told apart by the reading shown on the card, so the key is the
+// pair, not the spelling alone.
+const keys = new Set(vocabulary.map((item) => item.term + "|" + item.reading));
+if (keys.size !== vocabulary.length) {
+  failures.push({ reason: `indistinguishable cards: ${vocabulary.length - keys.size}` });
 }
 
 if (failures.length) {

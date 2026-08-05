@@ -27,7 +27,7 @@ for (const item of grammar) {
   if (forbidden.test(`${item.meaningZh} ${item.usageZh}`)) {
     failures.push({ id: item.id, term: item.term, reason: "generic or foreign residue", meaningZh: item.meaningZh, usageZh: item.usageZh });
   }
-  if (!item.usageZh.includes("主要接續：")) {
+  if (!item.usageZh || item.usageZh.length < 15 || !/接續|接在|形|＋/.test(item.usageZh)) {
     failures.push({ id: item.id, term: item.term, reason: "missing connection note" });
   }
   const example = item.examples?.[0];

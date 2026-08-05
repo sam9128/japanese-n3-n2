@@ -104,11 +104,11 @@ function vocabUsageZh(row, meaningZh) {
   const primary = meaningZh.split("；")[0];
   const multi =
     senseCount > 1
-      ? "JMdict 收錄 " + senseCount + " 個義項，本卡以最常用的「" + primary + "」為主，其餘義項請依上下文判斷。"
+      ? "本詞另有 " + (senseCount - 1) + " 個義項，本卡以最常用的「" + primary + "」為主，其餘請依上下文判斷。"
       : "";
-  const notes = (row.senses?.[0]?.inf || []).filter(Boolean);
-  const note = notes.length ? "用法註記：" + notes.join("；") + "。" : "";
-  return (head + posAdvice(row.pos).join("；") + "。" + multi + note).trim();
+  // JMdict's s_inf notes are English and would be the only non-Chinese text on
+  // the card, so they are deliberately not surfaced here.
+  return (head + posAdvice(row.pos).join("；") + "。" + multi).trim();
 }
 
 // Explanation shape varies by word class so the 4000 cards do not all read alike.
@@ -145,6 +145,22 @@ function vocabExplanationZh(row, meaningZh) {
   return "例句中的「" + term + "」" + kana + "是名詞，指「" + first + "」。請一併記住它在句中搭配的助詞。";
 }
 
+// A natural sentence conjugates: 集める appears as 集めている. Verbs and i-adjectives
+// are therefore matched on their stem, while nouns keep the strict check, because
+// loose matching on short kana nouns is exactly what filed a sentence about a bag
+// under バック (rear).
+function exampleDemonstrates(row, sentence) {
+  const forms = [row.term, row.reading];
+  const inflects =
+    (row.pos || []).some((p) => /^v/.test(p)) || (row.pos || []).includes("adj-i");
+  if (inflects) {
+    for (const form of [row.term, row.reading]) {
+      if (form && form.length > 1) forms.push(form.slice(0, -1));
+    }
+  }
+  return forms.some((form) => form && sentence.includes(form));
+}
+
 function resolveVocabExample(row) {
   // 1. A fully hand-written example, for entries the source deck cannot supply.
   const authored = vocabExamples[row.id];
@@ -156,6 +172,13 @@ function resolveVocabExample(row) {
   // 3. The deck sentence with a translation already in the shared pool.
   if (exampleTranslationsZh[deck.ja]) return { ja: deck.ja, zh: exampleTranslationsZh[deck.ja] };
   throw new Error("單字缺少例句中文翻譯：" + row.id + " " + deck.ja);
+}
+
+// Spread N items across the 12 periods as evenly as possible. Flooring index/5
+// left 116-05 with two reading articles and 116-06 with none, because 52 does
+// not divide by 5 into 12 buckets.
+function spreadPeriod(index, total) {
+  return Math.min(periods.length - 1, Math.floor((index * periods.length) / total));
 }
 
 function periodFor(index, caps) {
@@ -171,7 +194,7 @@ function loadWords() {
     const meaningZh = vocabZh[key];
     if (!meaningZh) throw new Error("單字缺少中文釋義：" + row.id + " " + row.term);
     const example = resolveVocabExample(row);
-    if (!example.ja.includes(row.term) && !example.ja.includes(row.reading)) {
+    if (!exampleDemonstrates(row, example.ja)) {
       throw new Error("例句未包含詞條：" + row.id + " " + row.term + " / " + example.ja);
     }
     const level = index < 1600 ? "N3" : "N2";
@@ -322,7 +345,7 @@ function makeReading(index) {
     reading:"新聞精讀與摘要",
     meaningZh:"先讀標題與導語掌握人物、事件、時間與變化，再完成摘要與理解題。",
     audioText:"",
-    unlockPeriod:periods[Math.min(11, Math.floor(index/5))],
+    unlockPeriod:periods[spreadPeriod(index, 52)],
     tags:[s.theme, newsCategory, "新聞讀解"],
     sourceRefs:["self-authored", sigureRefs.reading],
     sourceNoteZh:"參考時雨之町閱讀測驗的分級概念設計呈現方式；本文、標題、選項與解析均為本計畫自編，並非新聞或網站文章轉載。",
@@ -372,7 +395,7 @@ function makeListening(index) {
     question = makeQuestion("早めに準備した結果、どうなりましたか。", `${s.result}。`, scenarioValues(scenarioIndex,"result").map(value=>`${value}。`), index, `對話指出結果是「${s.result}」。`);
   }
   const id=`listening-${String(index+1).padStart(3,"0")}`;
-  return { id, level:index < 64 ? "N3":"N2", category:"listening", term:`聽力 ${index+1}｜${s.theme}`, reading:"逐句聽解", meaningZh:"先盲聽，再逐句確認聽力稿。", audioText:lines.join(" "), unlockPeriod:periods[Math.min(11, Math.floor(index/9))], tags:[s.theme], sourceRefs:["self-authored"], license:"CC BY 4.0 — 本計畫自編", estimatedMinutes:6, difficulty:1+(index%5), lines, questions:[{...question,id:`${id}-q1`}] };
+  return { id, level:index < 64 ? "N3":"N2", category:"listening", term:`聽力 ${index+1}｜${s.theme}`, reading:"逐句聽解", meaningZh:"先盲聽，再逐句確認聽力稿。", audioText:lines.join(" "), unlockPeriod:periods[spreadPeriod(index, 104)], tags:[s.theme], sourceRefs:["self-authored"], license:"CC BY 4.0 — 本計畫自編", estimatedMinutes:6, difficulty:1+(index%5), lines, questions:[{...question,id:`${id}-q1`}] };
 }
 
 const grammarFunctions = [
@@ -495,7 +518,10 @@ const assessments = [
 
 function auditGeneratedQuestions() {
   const hasJapanese=(value)=>/[\u3040-\u30ff\u3400-\u9fff]/.test(value||"");
-  const hasChineseMarker=(value)=>/[這裡還讓應該嗎個們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
+  // Catches Chinese prose leaking into a Japanese option. 個 and 該 were in this
+  // set but are ordinary Japanese kanji (数個, 該当), so they rejected real
+  // vocabulary once the word list was rebuilt from JMdict.
+  const hasChineseMarker=(value)=>/[這裡還讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
   const hasChineseExplanation=(value)=>/指出|要求|需要|首先|變更|聯絡|作者|期限|報名|指南|正確|讀作|中文|用來|對話|郵件|準備|男子|女子|通知|攜帶|兩人|女子/.test(value||"");
   const assert=(condition,message)=>{if(!condition)throw new Error(`題庫稽核失敗：${message}`)};
   const readingContents=new Set(reading.map((item)=>item.content));
@@ -534,7 +560,10 @@ function auditGeneratedQuestions() {
     for(const question of assessment.questions){
       examQuestionCount+=1;
       assert(!examQuestionIds.has(question.id),`考題 ID 重複：${question.id}`); examQuestionIds.add(question.id);
-      const signature=`${question.passage||""}|${question.audioText||""}|${question.prompt}`;
+      // Options are part of the signature because homophones legitimately share a
+      // prompt: 地震 and 自信 both read じしん, and each makes a valid, distinct
+      // orthography question once its own option set is taken into account.
+      const signature=`${question.passage||""}|${question.audioText||""}|${question.prompt}|${[...question.options].sort().join("/")}`;
       assert(!examSignatures.has(signature),`考題內容重複：${question.id}`); examSignatures.add(signature);
       assert(hasJapanese(question.instruction)&&hasJapanese(question.prompt),`${question.id} 題目說明或題幹不是日文`);
       assert(question.options.length===4&&new Set(question.options).size===4,`${question.id} 選項重複或缺漏`);

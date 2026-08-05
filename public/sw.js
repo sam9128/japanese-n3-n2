@@ -1,4 +1,4 @@
-const CACHE = "nihongo-stairs-v32-drive-session-token";
+const CACHE = "nihongo-stairs-v33-jmdict-content-weekly-unlock";
 const PERIODS = [
   "115-07",
   "115-08",
