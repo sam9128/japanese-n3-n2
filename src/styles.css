@@ -280,6 +280,57 @@ a {
     flex-basis: 100%;
   }
 }
+/* JLPT 大問 name on a reading/listening item, so the learner can tell which kind
+   of question they are practising. */
+.jlpt-badge {
+  background: #e5ebe3;
+  color: var(--green);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.format-hint {
+  color: #68736a;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 6px 0 0;
+}
+/* 情報検索 passages are a table rendered as lines; keep the columns readable. */
+.news-article.info-table p {
+  font-variant-numeric: tabular-nums;
+}
+.news-article.info-table p + p {
+  margin-top: 2px;
+}
+.question-number {
+  display: inline-block;
+  background: var(--green);
+  color: #fff;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 7px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+/* 概要理解 and 統合理解 withhold the question until the learner has listened. */
+.question-hidden {
+  text-align: center;
+}
+.question-hidden p {
+  color: #68736a;
+  line-height: 1.9;
+  margin: 0 0 14px;
+}
+.question-hidden button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--green);
+  padding: 10px 20px;
+  font: inherit;
+  cursor: pointer;
+}
 .today-ring {
   border: 1px solid var(--line);
   border-radius: 50%;

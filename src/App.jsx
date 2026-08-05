@@ -1373,7 +1373,9 @@ function MediaView({
     : 0;
   const item = list[selected];
   const transcript = Boolean(pageState.transcript);
-  const answer = pageState.answers?.[item?.id] ?? null;
+  // Answers are keyed by question id, not item id: a 長文 carries three questions
+  // and a 統合理解 conversation two, so one slot per item lost all but the first.
+  const answers = pageState.answers || {};
   const replays = Number(pageState.replays) || 0;
   const startedAt = pageState.startedAt ? Number(pageState.startedAt) : null;
   const elapsedBase = Number(pageState.elapsed) || 0;
@@ -1432,7 +1434,31 @@ function MediaView({
         <Empty text="這個月份尚無閱讀／聽力教材，請切換到其他月份。" />
       </section>
     );
-  const question = item.questions[0];
+  // 概要理解 and 統合理解 print no question in advance in the real exam — you
+  // listen first, then find out what was asked. Showing the stem up front would
+  // remove the skill the 大問 exists to test.
+  const questionsHidden =
+    item.revealQuestionFirst === false && !pageState.revealed?.[item.id];
+  const revealQuestions = () =>
+    updatePage((current) => ({
+      ...current,
+      revealed: { ...(current.revealed || {}), [item.id]: true },
+    }));
+  const answerQuestion = (question, choice) => {
+    const nextAnswers = { ...answers, [question.id]: choice };
+    updatePage((current) => ({
+      ...current,
+      answers: { ...(current.answers || {}), [question.id]: choice },
+    }));
+    // Rate the item once, when its last question is answered, so a three-question
+    // 長文 logs one study event rather than three.
+    const done = item.questions.every((q) => nextAnswers[q.id] !== undefined);
+    if (!done) return;
+    const allCorrect = item.questions.every(
+      (q) => nextAnswers[q.id] === q.answer,
+    );
+    store.rate(item, allCorrect ? "good" : "hard", { replays });
+  };
   const goToMediaItem = (nextIndex) =>
     updatePage((current) => ({
       ...current,
@@ -1511,17 +1537,17 @@ function MediaView({
         <article className="media-workspace">
           <div className="media-head">
             <div>
-              {type === "reading" && item.newsStyle ? (
-                <div className="news-meta">
-                  <span>{item.level} · {item.newsCategory}新聞</span>
-                  <time>{item.dateline}</time>
-                </div>
-              ) : (
+              <div className="news-meta">
                 <span>
-                  {item.level} · {type === "reading" ? "精讀" : "逐句聽解"}
+                  {item.level} · <b className="jlpt-badge">{item.jlptType}</b>
+                  {item.reading ? ` · ${item.reading}` : ""}
                 </span>
-              )}
+                <time>{item.dateline}</time>
+              </div>
               <h2>{item.headline || item.term}</h2>
+              {item.meaningZh ? (
+                <p className="format-hint">{item.meaningZh}</p>
+              ) : null}
             </div>
             <div className="timer">
               {String(Math.floor(elapsed / 60)).padStart(2, "0")}:
@@ -1533,7 +1559,9 @@ function MediaView({
           </div>
           {type === "reading" ? (
             <div className="reading-copy">
-              <article className={item.newsStyle ? "news-article" : ""}>
+              <article
+                className={`news-article${item.infoRows ? " info-table" : ""}`}
+              >
                 {item.content.split("\n").map((p, i) => (
                   <p key={i}>{p}</p>
                 ))}
@@ -1607,39 +1635,56 @@ function MediaView({
               )}
             </div>
           )}
-          <div className="question">
-            <h3>{question.prompt}</h3>
-            {question.options.map((option, i) => (
-              <button
-                key={option}
-                className={
-                  answer === i
-                    ? i === question.answer
-                      ? "correct"
-                      : "wrong"
-                    : ""
-                }
-                onClick={() => {
-                  updatePage((current) => ({
-                    ...current,
-                    answers: { ...(current.answers || {}), [item.id]: i },
-                  }));
-                  store.rate(item, i === question.answer ? "good" : "hard", {
-                    replays,
-                    answer: i,
-                  });
-                }}
-              >
-                {String.fromCharCode(65 + i)}. {option}
-              </button>
-            ))}
-            {answer !== null && (
-              <p className="explanation">
-                {answer === question.answer ? "答對了。" : "再聽一次關鍵句。"}{" "}
-                {question.explanation}
+          {questionsHidden ? (
+            <div className="question question-hidden">
+              <p>
+                這是「{item.jlptType}」，正式考試不會事先給題目。
+                請先聽完，再看問題。
               </p>
-            )}
-          </div>
+              <button type="button" onClick={revealQuestions}>
+                聽完了，顯示問題
+              </button>
+            </div>
+          ) : (
+            item.questions.map((question, qi) => {
+              const answer = answers[question.id] ?? null;
+              return (
+                <div className="question" key={question.id}>
+                  <h3>
+                    {item.questions.length > 1 && (
+                      <span className="question-number">問{qi + 1}</span>
+                    )}
+                    {question.prompt}
+                  </h3>
+                  {question.options.map((option, i) => (
+                    <button
+                      key={option}
+                      className={
+                        answer === i
+                          ? i === question.answer
+                            ? "correct"
+                            : "wrong"
+                          : ""
+                      }
+                      onClick={() => answerQuestion(question, i)}
+                    >
+                      {String.fromCharCode(65 + i)}. {option}
+                    </button>
+                  ))}
+                  {answer !== null && (
+                    <p className="explanation">
+                      {answer === question.answer
+                        ? "答對了。"
+                        : type === "reading"
+                          ? "再讀一次關鍵句。"
+                          : "再聽一次關鍵句。"}{" "}
+                      {question.explanation}
+                    </p>
+                  )}
+                </div>
+              );
+            })
+          )}
           <div className="media-nav-actions" aria-label="閱讀聽力上下題">
             <button
               type="button"

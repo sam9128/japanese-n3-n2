@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import {READING_FORMATS,LISTENING_FORMATS,readingFormatFor,listeningFormatFor} from "./source/jlpt-formats.mjs";
 const root=path.resolve(import.meta.dirname,"..","public","content");
 const index=JSON.parse(fs.readFileSync(path.join(root,"index.json"),"utf8"));
 const packs=index.periods.map(period=>JSON.parse(fs.readFileSync(path.join(root,"periods",`${period}.json`),"utf8")));
@@ -46,19 +47,53 @@ const hasChineseMarker=(value)=>/[這裡還讓應嗎們]|下午|上午|二樓|�
 const sourceQuestions=new Map();
 const awkwardPatterns=[/するください/,/するもらえ/,/事前に前日まで/,/までに前日まで/,/早めに前日まで/];
 if(new Set(all.reading.map(item=>item.content)).size!==52)throw new Error("reading passages are not all unique");
-if(new Set(all.reading.map(item=>item.headline)).size!==52)throw new Error("news headlines are not all unique");
+if(new Set(all.reading.map(item=>item.headline)).size!==52)throw new Error("reading titles are not all unique");
 for(const item of all.reading){
-  if(!item.newsStyle||!item.newsCategory||!item.newsCategoryJa||!item.headline||!item.dateline)throw new Error(`news metadata missing: ${item.id}`);
-  if(!item.summaryPromptZh||!item.sourceNoteZh?.includes("自編")||!item.sourceNoteZh?.includes("並非"))throw new Error(`news authorship notice missing: ${item.id}`);
-  if(!item.sourceRefs.includes("https://www.sigure.tw/quiz/reading/medium/"))throw new Error(`news reference missing: ${item.id}`);
+  if(!item.jlptFormat||!item.jlptType||!item.formatLabelZh||!item.headline||!item.dateline)throw new Error(`JLPT format metadata missing: ${item.id}`);
+  if(!item.summaryPromptZh||!item.sourceNoteZh?.includes("自編")||!item.sourceNoteZh?.includes("並非"))throw new Error(`authorship notice missing: ${item.id}`);
+  if(!item.sourceRefs.includes("https://www.sigure.tw/quiz/reading/medium/"))throw new Error(`reading reference missing: ${item.id}`);
 }
 if(new Set(all.listening.map(item=>item.audioText)).size!==104)throw new Error("listening scripts are not all unique");
+
+// Per-大問 counts, question counts and script lengths, so the JLPT structure
+// cannot quietly collapse back into one undifferentiated format.
+const readingByFormat=new Map();
+for(const item of all.reading)readingByFormat.set(item.jlptFormat,(readingByFormat.get(item.jlptFormat)||0)+1);
+for(const format of READING_FORMATS){
+  if(readingByFormat.get(format.key)!==format.count)throw new Error(`reading 大問 count mismatch: ${format.jlpt} ${readingByFormat.get(format.key)}/${format.count}`);
+}
+const listeningByFormat=new Map();
+for(const item of all.listening)listeningByFormat.set(item.jlptFormat,(listeningByFormat.get(item.jlptFormat)||0)+1);
+for(const format of LISTENING_FORMATS){
+  if(listeningByFormat.get(format.key)!==format.count)throw new Error(`listening 大問 count mismatch: ${format.jlpt} ${listeningByFormat.get(format.key)}/${format.count}`);
+}
+
+// The defect this whole rebuild was about: 52 reading passages used to show the
+// learner four distinct question wordings all year. Cap how much any one stem
+// may dominate so that can never come back unnoticed.
+for(const [label,items,minStems,maxShare] of [["reading",all.reading,20,0.2],["listening",all.listening,18,0.25]]){
+  const questions=items.flatMap(item=>item.questions);
+  const stems=new Map();
+  for(const question of questions)stems.set(question.prompt,(stems.get(question.prompt)||0)+1);
+  if(stems.size<minStems)throw new Error(`${label} question stems too repetitive: ${stems.size} distinct across ${questions.length} questions`);
+  const worst=[...stems.entries()].sort((a,b)=>b[1]-a[1])[0];
+  if(worst[1]/questions.length>maxShare)throw new Error(`${label} stem overused: 「${worst[0]}」 ${worst[1]}/${questions.length}`);
+}
+
 for(const item of [...all.reading,...all.listening]){
   const sourceText=item.category==="reading"?item.content:item.audioText;
   if(awkwardPatterns.some(pattern=>pattern.test(sourceText)))throw new Error(`unnatural Japanese construction: ${item.id}`);
-  const expectedCount=item.category==="reading"?2:1;
-  if(item.questions?.length!==expectedCount)throw new Error(`source question count mismatch: ${item.id}`);
-  if(item.category==="listening"&&(item.lines?.length!==5||item.audioText!==item.lines.join(" ")))throw new Error(`listening lines mismatch: ${item.id}`);
+  const format=item.category==="reading"?readingFormatFor(item.jlptFormat):listeningFormatFor(item.jlptFormat);
+  if(!format)throw new Error(`unknown JLPT format: ${item.id} ${item.jlptFormat}`);
+  if(item.questions?.length!==format.questions)throw new Error(`source question count mismatch: ${item.id} (${item.questions?.length}, ${format.jlpt} expects ${format.questions})`);
+  if(item.category==="reading"){
+    const length=[...item.content].length;
+    if(length<format.chars[0]||length>format.chars[1])throw new Error(`passage length out of band: ${item.id} ${length} not in ${format.chars}`);
+  }
+  if(item.category==="listening"){
+    if(item.lines?.length<format.lines[0]||item.lines?.length>format.lines[1])throw new Error(`listening line count out of band: ${item.id} ${item.lines?.length} not in ${format.lines}`);
+    if(item.audioText!==item.lines.join(" "))throw new Error(`listening lines mismatch: ${item.id}`);
+  }
   for(const question of item.questions){
     if(!question.id||sourceQuestions.has(question.id))throw new Error(`duplicate source question ID: ${question.id}`);
     if(!hasJapanese(question.prompt))throw new Error(`non-Japanese source prompt: ${question.id}`);
@@ -77,7 +112,9 @@ const examSources=new Set();
 let examQuestionCount=0;
 for(const assessment of all.assessments){
   if(assessment.questions?.length!==assessment.questionCount)throw new Error(`assessment question count mismatch: ${assessment.id}`);
-  for(const type of ["漢字読み","表記","文法形式","内容理解","ポイント理解"])if(!assessment.questions.some(question=>question.type===type))throw new Error(`assessment item type missing (${type}): ${assessment.id}`);
+  // 読解 and 聴解 questions carry the source item's own 大問 name now, so an exam is
+  // checked for section coverage rather than one fixed label per section.
+  for(const section of ["言語知識","文法","読解","聴解"])if(!assessment.questions.some(question=>question.section===section))throw new Error(`assessment section missing (${section}): ${assessment.id}`);
   for(const question of assessment.questions){
     examQuestionCount+=1;
     if(examIds.has(question.id))throw new Error(`duplicate exam question ID: ${question.id}`);examIds.add(question.id);

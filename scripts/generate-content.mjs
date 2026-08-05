@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { grammarExamples } from "./source/grammar-examples.mjs";
-import { assessmentScenarios } from "./source/assessment-scenarios.mjs";
+import { buildReading, buildListening } from "./source/build-media.mjs";
+import { readingFormatFor, listeningFormatFor } from "./source/jlpt-formats.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dryRun = process.argv.includes("--dry-run");
@@ -281,123 +282,6 @@ function rotateOptions(correct, distractors, seed) {
   return { options:rotated, answer:rotated.indexOf(correct) };
 }
 
-function scenarioValues(index, key) {
-  const correct=assessmentScenarios[index][key];
-  const values=[...new Set(assessmentScenarios.map((scenario)=>scenario[key]))].filter((value)=>value!==correct);
-  const shift=index%values.length;
-  return [...values.slice(shift),...values.slice(0,shift)];
-}
-
-function makeQuestion(prompt, correct, distractors, seed, explanation, evidence = correct) {
-  return { prompt, ...rotateOptions(correct, distractors, seed), explanation, evidence };
-}
-
-function makeReading(index) {
-  const scenarioIndex = index % assessmentScenarios.length;
-  const variant = Math.floor(index / assessmentScenarios.length);
-  const s = assessmentScenarios[scenarioIndex];
-  const categories = [
-    ["交通", "交通"], ["生活", "生活"], ["教育", "教育"], ["工作", "仕事"],
-    ["氣象", "気象"], ["健康", "健康"], ["旅遊", "観光"], ["居住", "住宅"],
-    ["消費", "消費"], ["文化", "文化"], ["圖書", "図書"], ["經濟", "経済"], ["環境", "環境"],
-  ];
-  const [newsCategory, newsCategoryJa] = categories[scenarioIndex];
-  const dateline = `學習新聞・第 ${String(index + 1).padStart(2, "0")} 號`;
-  let headline;
-  let content;
-  let questions;
-  if (variant === 0) {
-    headline = `${s.event}、時間と場所を変更`;
-    content = `【${newsCategoryJa}ニュース】\n${s.event}は、${s.reason}ため、予定していた${s.oldTime}の${s.oldPlace}から、${s.newTime}の${s.newPlace}へ変更されることになりました。主催者は、参加者に${s.item}を持参し、開始の十分前までに集まるよう呼びかけています。詳しい情報については、${s.contact}に確認してください。`;
-    questions = [
-      makeQuestion("参加する人は、いつ、どこへ行きますか。", `${s.newTime}に${s.newPlace}へ行く。`, [`${s.oldTime}に${s.oldPlace}へ行く。`,`${s.newTime}に${s.oldPlace}へ行く。`,`${s.oldTime}に${s.newPlace}へ行く。`], index, `文章指出變更後應在「${s.newTime}」前往「${s.newPlace}」。`, s.newTime),
-      makeQuestion("主催者は、参加者に何を持ってくるよう呼びかけていますか。", s.item, scenarioValues(scenarioIndex,"item"), index+1, `新聞導語指出主辦方要求參加者攜帶「${s.item}」。`)
-    ];
-  } else if (variant === 1) {
-    headline = `${s.event}、事前の準備を呼びかけ`;
-    content = `【${newsCategoryJa}ニュース】\n${s.event}を予定どおり進めるため、担当の${s.actor}は参加者に「${s.action}」という準備を${s.deadline}までに終えるよう求めました。準備が終わった人は${s.contact}へ連絡し、当日は${s.item}を持参します。${s.reason}ため、担当者は直前にも最新の予定を確認してほしいと話しています。`;
-    questions = [
-      makeQuestion("参加する人が最初にしなければならないことは何ですか。", `${s.action}。`, scenarioValues(scenarioIndex,"action").map(value=>`${value}。`), index, `郵件要求先「${s.action}」。`, s.action),
-      makeQuestion("準備が終わった後、どうしますか。", `${s.contact}へ連絡する。`, scenarioValues(scenarioIndex,"contact").map(value=>`${value}へ連絡する。`), index+1, `準備完成後要聯絡「${s.contact}」。`, s.contact)
-    ];
-  } else if (variant === 2) {
-    headline = `早めの準備で「${s.result}」`;
-    content = `【${newsCategoryJa}レポート】\n${s.event}の担当者は、今回は「${s.action}」という準備を早い段階から始めました。以前は準備を当日まで延ばし、必要な情報を十分に確認できなかったということです。事前の確認を増やした結果、${s.result}。担当者は、${s.reason}場合でも、前もって確認すれば落ち着いて対応できると説明しています。`;
-    questions = [
-      makeQuestion("早めに準備した結果、どうなりましたか。", `${s.result}。`, scenarioValues(scenarioIndex,"result").map(value=>`${value}。`), index, `作者提到提早準備後「${s.result}」。`),
-      makeQuestion("筆者が最も伝えたいことは何ですか。", `「${s.action}」という準備を事前に行うことが大切だ。`, [`準備は当日になってから始めればよい。`,`予定が変わったときは何もしないほうがよい。`,`必要な情報はほかの人だけに確認してもらえばよい。`], index+1, `作者的主張是事前「${s.action}」很重要。`, s.action)
-    ];
-  } else {
-    headline = `${s.event}、参加方法を発表`;
-    content = `【${newsCategoryJa}案内】\n${s.event}の参加方法が発表されました。申し込みは${s.deadline}までに${s.contact}へ連絡します。集合は${s.newTime}に${s.newPlace}です。参加者は${s.item}を持参し、事前に「${s.action}」という準備を済ませる必要があります。${s.reason}場合は時刻や場所が変わる可能性があり、変更は申込者へメールで通知されます。`;
-    questions = [
-      makeQuestion("参加を申し込むには、どうすればいいですか。", `${s.deadline}までに${s.contact}へ連絡する。`, [`${s.newTime}に${s.contact}へ行く。`,`${s.deadline}までに${s.newPlace}へ行く。`,`${s.oldTime}にメールを待つ。`], index, `報名方式是在「${s.deadline}」前聯絡「${s.contact}」。`, s.deadline),
-      makeQuestion("記事の内容と合っているものはどれですか。", `参加する前に「${s.action}」という準備を済ませる必要がある。`, [`持ち物は何も必要ない。`,`変更があっても連絡は来ない。`,`集合場所は必ず${s.oldPlace}である。`], index+1, `新聞模組明確指出參加前須先「${s.action}」。`, s.action)
-    ];
-  }
-  const id=`reading-${String(index+1).padStart(2,"0")}`;
-  questions=questions.map((question,questionIndex)=>({...question,id:`${id}-q${questionIndex+1}`}));
-  return {
-    id,
-    level:index < 32 ? "N3":"N2",
-    category:"reading",
-    term:`${newsCategory}新聞｜${headline}`,
-    reading:"新聞精讀與摘要",
-    meaningZh:"先讀標題與導語掌握人物、事件、時間與變化，再完成摘要與理解題。",
-    audioText:"",
-    unlockPeriod:periods[spreadPeriod(index, 52)],
-    tags:[s.theme, newsCategory, "新聞讀解"],
-    sourceRefs:["self-authored", sigureRefs.reading],
-    sourceNoteZh:"參考時雨之町閱讀測驗的分級概念設計呈現方式；本文、標題、選項與解析均為本計畫自編，並非新聞或網站文章轉載。",
-    license:"CC BY 4.0 — 本計畫自編",
-    estimatedMinutes:8+(index%5),
-    difficulty:1+(index%5),
-    newsStyle:true,
-    newsCategory,
-    newsCategoryJa,
-    headline,
-    dateline,
-    summaryPromptZh:"請用 2–3 句寫出：發生什麼事、原因或變化、讀者需要採取的行動。",
-    content,
-    questions
-  };
-}
-
-function makeListening(index) {
-  const scenarioIndex = index % assessmentScenarios.length;
-  const variant = Math.floor(index / assessmentScenarios.length);
-  const s = assessmentScenarios[scenarioIndex];
-  let lines;
-  let question;
-  if (variant === 0) {
-    lines = [`女：${s.event}は${s.oldTime}に${s.oldPlace}で行う予定でしたね。`,`男：はい。でも、${s.reason}ため、予定が変わりました。`,`女：新しい予定を教えてください。`,`男：${s.newTime}に${s.newPlace}へ来てください。`,`女：分かりました。間違えないようにします。`];
-    question = makeQuestion("新しい時間と場所はどれですか。", `${s.newTime}・${s.newPlace}`, [`${s.oldTime}・${s.oldPlace}`,`${s.newTime}・${s.oldPlace}`,`${s.oldTime}・${s.newPlace}`], index, `對話確認新的時間與地點是「${s.newTime}・${s.newPlace}」。`, s.newTime);
-  } else if (variant === 1) {
-    lines = [`女：${s.event}の準備は、何から始めればいいですか。`,`男：まず、「${s.action}」という準備をしてください。`,`女：終わったら、どうしますか。`,`男：${s.contact}へ連絡してください。そのあと、${s.item}を用意しましょう。`,`女：はい、順番に進めます。`];
-    question = makeQuestion("女の人は、まず何をしますか。", `${s.action}。`, scenarioValues(scenarioIndex,"action").map(value=>`${value}。`), index, `男子首先要求「${s.action}」。`, s.action);
-  } else if (variant === 2) {
-    lines = [`男：どうして${s.event}の予定が変わったんですか。`,`女：${s.reason}からです。`,`男：中止ではないんですね。`,`女：はい。新しい予定はメールで知らせます。`,`男：分かりました。メールを確認します。`];
-    question = makeQuestion("予定が変わった理由は何ですか。", `${s.reason}から。`, scenarioValues(scenarioIndex,"reason").map(value=>`${value}から。`), index, `女子說明變更原因是「${s.reason}」。`, s.reason);
-  } else if (variant === 3) {
-    lines = [`女：${s.event}には何を持っていけばいいですか。`,`男：${s.item}を持ってきてください。`,`女：ほかにも必要ですか。`,`男：いいえ、それだけで大丈夫です。`,`女：では、忘れないように準備します。`];
-    question = makeQuestion("女の人は何を持っていきますか。", s.item, scenarioValues(scenarioIndex,"item"), index, `女子需要攜帶「${s.item}」。`);
-  } else if (variant === 4) {
-    lines = [`男：${s.event}の場所ですが、${s.oldPlace}は使えないそうです。`,`女：では、${s.newPlace}はどうですか。`,`男：そこなら全員が集まりやすいですね。`,`女：では、その場所に決めて、みんなに知らせます。`,`男：お願いします。`];
-    question = makeQuestion("二人は、どこで行うことにしましたか。", s.newPlace, [s.oldPlace,...scenarioValues(scenarioIndex,"newPlace").slice(0,2)], index, `兩人最後決定在「${s.newPlace}」進行。`);
-  } else if (variant === 5) {
-    lines = [`女：${s.action}のは、いつまでですか。`,`男：${s.deadline}までです。`,`女：明日でも間に合いますか。`,`男：はい。ただし、終わったらすぐ${s.contact}へ知らせてください。`,`女：分かりました。`];
-    question = makeQuestion("女の人は、いつまでに準備しますか。", s.deadline, scenarioValues(scenarioIndex,"deadline"), index, `期限是「${s.deadline}」。`);
-  } else if (variant === 6) {
-    lines = [`男：すみません、${s.event}の前に、「${s.action}」という準備をお願いできますか。`,`女：はい。${s.deadline}まででいいですか。`,`男：お願いします。終わったら私にメールしてください。`,`女：分かりました。今日から始めます。`,`男：よろしくお願いします。`];
-    question = makeQuestion("女の人は、このあと何をしますか。", `${s.action}。`, scenarioValues(scenarioIndex,"action").map(value=>`${value}。`), index, `男子請女子接著「${s.action}」。`, s.action);
-  } else {
-    lines = [`女：今回の${s.event}は、前より順調でしたね。`,`男：早い段階で「${s.action}」という準備をしたからだと思います。`,`女：その結果、どうなりましたか。`,`男：${s.result}。`,`女：次回も同じ方法で準備しましょう。`];
-    question = makeQuestion("早めに準備した結果、どうなりましたか。", `${s.result}。`, scenarioValues(scenarioIndex,"result").map(value=>`${value}。`), index, `對話指出結果是「${s.result}」。`);
-  }
-  const id=`listening-${String(index+1).padStart(3,"0")}`;
-  return { id, level:index < 64 ? "N3":"N2", category:"listening", term:`聽力 ${index+1}｜${s.theme}`, reading:"逐句聽解", meaningZh:"先盲聽，再逐句確認聽力稿。", audioText:lines.join(" "), unlockPeriod:periods[spreadPeriod(index, 104)], tags:[s.theme], sourceRefs:["self-authored"], license:"CC BY 4.0 — 本計畫自編", estimatedMinutes:6, difficulty:1+(index%5), lines, questions:[{...question,id:`${id}-q1`}] };
-}
-
 const grammarFunctions = [
   "条件や仮定を表している", "目的を表している", "原因や理由を表している", "願望や祈りを表している",
   "予想と異なる結果や対比を表している", "推量や伝聞を表している", "時間や動作の前後関係を表している",
@@ -466,7 +350,8 @@ function makeExamQuestions(id, level, period, questionCount, catalog) {
   const kanjiPool = orderedLevelPool(catalog.vocabulary,level,maxPeriod).filter((item) => /[\u3400-\u9fff]/.test(item.term)&&item.reading&&item.reading!==item.term&&item.readingQuizEligible);
   const grammarPool = orderedLevelPool(catalog.grammar,level,maxPeriod);
   const readingPool = orderedLevelPool(catalog.reading,level,maxPeriod).flatMap((item)=>item.questions.map((question,questionIndex)=>({item,question,questionIndex,id:`${item.id}-q${questionIndex+1}`})));
-  const listeningPool = orderedLevelPool(catalog.listening,level,maxPeriod).map((item)=>({item,question:item.questions[0],id:`${item.id}-q1`}));
+  // 統合理解 carries two questions; taking only the first threw half the pool away.
+  const listeningPool = orderedLevelPool(catalog.listening,level,maxPeriod).flatMap((item)=>item.questions.map((question,questionIndex)=>({item,question,questionIndex,id:`${item.id}-q${questionIndex+1}`})));
   const used=assessmentUsage;
   const seedBase = [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return Array.from({length:questionCount}, (_, index) => {
@@ -489,11 +374,11 @@ function makeExamQuestions(id, level, period, questionCount, catalog) {
     }
     if (type === 3) {
       const entry=takeUnused(readingPool,used.reading,seed,undefined,`${id} 読解`);
-      return { id:`${id}-q${index+1}`, section:"読解", type:"内容理解", instruction:"次の文章を読んで、質問に答えなさい。", passage:entry.item.content, prompt:entry.question.prompt, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"reading-source" };
+      return { id:`${id}-q${index+1}`, section:"読解", type:entry.question.jlptType, instruction:"次の文章を読んで、質問に答えなさい。", passage:entry.item.content, prompt:entry.question.prompt, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"reading-source" };
     }
     if (type === 4) {
       const entry=takeUnused(listeningPool,used.listening,seed,undefined,`${id} 聴解`);
-      return { id:`${id}-q${index+1}`, section:"聴解", type:"ポイント理解", instruction:"音声を聞いて、質問に答えなさい。", prompt:entry.question.prompt, audioText:entry.item.audioText, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"listening-source" };
+      return { id:`${id}-q${index+1}`, section:"聴解", type:entry.question.jlptType, instruction:"音声を聞いて、質問に答えなさい。", prompt:entry.question.prompt, audioText:entry.item.audioText, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"listening-source" };
     }
     const item=takeUnused(grammarPool,used.grammar,seed,undefined,`${id} 文法`);
     const correct=grammarFunctionJa(item.term);
@@ -507,8 +392,8 @@ function makeAssessment(id, title, level, period, minutes, questionCount, kind, 
 
 const vocabulary = loadWords();
 const grammar = makeGrammar();
-const reading = Array.from({length:52},(_,i)=>makeReading(i));
-const listening = Array.from({length:104},(_,i)=>makeListening(i));
+const reading = buildReading(periods, spreadPeriod);
+const listening = buildListening(periods, spreadPeriod);
 const catalog = { vocabulary, grammar, reading, listening };
 const assessments = [
   ...periods.map((p,i)=>makeAssessment(`monthly-${String(i+1).padStart(2,"0")}`,`${p.replace("-","/")} 月檢核`, i<6?"N3":"N2",p,35,20,"monthly",catalog)),
@@ -522,7 +407,27 @@ function auditGeneratedQuestions() {
   // set but are ordinary Japanese kanji (数個, 該当), so they rejected real
   // vocabulary once the word list was rebuilt from JMdict.
   const hasChineseMarker=(value)=>/[這裡還讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
-  const hasChineseExplanation=(value)=>/指出|要求|需要|首先|變更|聯絡|作者|期限|報名|指南|正確|讀作|中文|用來|對話|郵件|準備|男子|女子|通知|攜帶|兩人|女子/.test(value||"");
+  // Was a whitelist of Chinese words the old templates happened to use, which
+  // rejected perfectly good Chinese written any other way. An explanation is
+  // Chinese if, once the Japanese it quotes in 「」 is removed, what is left has
+  // Han characters and no kana.
+  // The point of this check is to catch an explanation that is accidentally in
+  // Japanese, not to ban quoting Japanese — explanations legitimately cite the
+  // word, the pattern and an example sentence. A Chinese explanation therefore
+  // has Han characters and only a minority of kana; a Japanese one is mostly kana.
+  const hasChineseExplanation=(value)=>{
+    // Explanations legitimately cite Japanese — in 「」 and after 例句： — and a
+    // 発話表現 note may compare four expressions at once, so citations are removed
+    // before judging. What remains is the author's own prose: it must be Chinese,
+    // which means Han characters and only incidental kana.
+    const prose=(value||"")
+      .replace(/「[^」]*」/g,"")
+      .split("例句：")[0]
+      .replace(/\s/g,"");
+    if(!/[㐀-鿿]/.test(prose))return false;
+    const kana=(prose.match(/[぀-ヿ]/g)||[]).length;
+    return kana/Math.max(1,prose.length)<0.15;
+  };
   const assert=(condition,message)=>{if(!condition)throw new Error(`題庫稽核失敗：${message}`)};
   const readingContents=new Set(reading.map((item)=>item.content));
   const listeningScripts=new Set(listening.map((item)=>item.audioText));
@@ -534,8 +439,15 @@ function auditGeneratedQuestions() {
   for(const item of [...reading,...listening]){
     const sourceText=item.category==="reading"?item.content:item.audioText;
     assert(!awkwardPatterns.some((pattern)=>pattern.test(sourceText)),`${item.id} 含不自然的日文接續`);
-    assert(item.questions.length===(item.category==="reading"?2:1),`${item.id} 題數不正確`);
-    if(item.category==="listening")assert(item.lines.length===5&&item.audioText===item.lines.join(" "),`${item.id} 聽力稿與逐句內容不一致`);
+    // Question count and line count now follow the item's JLPT 大問 rather than a
+    // single number: 長文 carries three questions, 即時応答 one line, 統合理解 nine.
+    const format=item.category==="reading"?readingFormatFor(item.jlptFormat):listeningFormatFor(item.jlptFormat);
+    assert(format,`${item.id} 沒有對應的 JLPT 題型`);
+    assert(item.questions.length===format.questions,`${item.id} 題數不正確（${item.questions.length}，${format.jlpt} 應為 ${format.questions}）`);
+    if(item.category==="listening"){
+      assert(item.lines.length>=format.lines[0]&&item.lines.length<=format.lines[1],`${item.id} 語音行數 ${item.lines.length} 不在 ${format.jlpt} 的 ${format.lines} 範圍`);
+      assert(item.audioText===item.lines.join(" "),`${item.id} 聽力稿與逐句內容不一致`);
+    }
     for(const question of item.questions){
       assert(!sourceQuestions.has(question.id),`來源題 ID 重複：${question.id}`);
       assert(hasJapanese(question.prompt),`${question.id} 題幹不是日文`);
@@ -552,11 +464,13 @@ function auditGeneratedQuestions() {
   const examQuestionIds=new Set();
   const examSignatures=new Set();
   const usedSources=new Set();
-  const requiredTypes=["漢字読み","表記","文法形式","内容理解","ポイント理解"];
+  // 読解 and 聴解 questions now carry the source item's real 大問 name, so the
+  // check is that every section is represented rather than one fixed label.
+  const requiredSections=["言語知識","文法","読解","聴解"];
   let examQuestionCount=0;
   for(const assessment of assessments){
     assert(assessment.questions.length===assessment.questionCount,`${assessment.id} 題數不符`);
-    assert(requiredTypes.every((type)=>assessment.questions.some((question)=>question.type===type)),`${assessment.id} 題型有缺漏`);
+    assert(requiredSections.every((section)=>assessment.questions.some((question)=>question.section===section)),`${assessment.id} 題型有缺漏`);
     for(const question of assessment.questions){
       examQuestionCount+=1;
       assert(!examQuestionIds.has(question.id),`考題 ID 重複：${question.id}`); examQuestionIds.add(question.id);
