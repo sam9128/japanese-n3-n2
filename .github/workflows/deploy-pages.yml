@@ -52,3 +52,9 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # The twelve lesson packs make the artifact ~5MB, and Pages has been
+          # taking longer than the action's 10-minute default to report the
+          # deployment finished — two runs aborted while GitHub was still
+          # publishing. Waiting longer is cheaper than a half-applied deploy.
+          timeout: 1200000
