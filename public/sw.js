@@ -14,7 +14,7 @@
 //
 // Bump CACHE only when this file's own logic changes; content and code updates no
 // longer need it.
-const CACHE = "nihongo-stairs-v34-self-updating";
+const CACHE = "nihongo-stairs-v35-content-version";
 const PERIODS = [
   "115-07",
   "115-08",
@@ -41,7 +41,15 @@ const PRELOAD = [
 
 async function installApp() {
   const cache = await caches.open(CACHE);
-  await cache.addAll(PRELOAD);
+  // cache.addAll goes through the HTTP cache, which on a fresh deploy can still
+  // hand back the previous lesson files. Fetching with cache:"reload" makes a new
+  // service worker version always seed the current content.
+  await Promise.all(
+    PRELOAD.map(async (url) => {
+      const preloaded = await fetch(url, { cache: "reload" });
+      if (preloaded.ok) await cache.put(url, preloaded);
+    }),
+  );
   const response = await fetch("./", { cache: "no-cache" });
   const html = await response.text();
   const assetUrls = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
@@ -133,10 +141,62 @@ async function networkFirst(cache, request) {
   }
 }
 
+const isContentIndex = (url) => url.pathname.endsWith("/content/index.json");
+const isPeriodPack = (url) =>
+  /\/content\/periods\/[^/]+\.json$/.test(url.pathname);
+
+async function purgePeriodPacks(cache) {
+  const keys = await cache.keys();
+  await Promise.all(
+    keys
+      .filter((request) => isPeriodPack(new URL(request.url)))
+      .map((request) => cache.delete(request)),
+  );
+}
+
+/**
+ * The lesson index, network first, with one extra job.
+ *
+ * Lesson packs are half a megabyte each, so they stay stale-while-revalidate —
+ * fetching twelve of them on every start would be painful on a phone. But that
+ * meant a content rebuild only reached the learner on their *second* visit: the
+ * first one served the old lessons and refreshed them in the background. After
+ * the reading and listening rebuild, the learner opened the app and saw the old
+ * questions, which looked like the rebuild had not shipped.
+ *
+ * index.json is 25KB and carries contentVersion, so it can be fetched fresh
+ * every time. When that version changes, the cached packs are dropped before
+ * this response is returned — and since the app awaits the index before
+ * requesting any pack, the packs it then asks for miss the cache and come from
+ * the network. The learner gets the new lessons in the same session.
+ */
+async function handleContentIndex(cache, request) {
+  try {
+    const response = await fetch(request);
+    if (!response.ok || response.type !== "basic") return response;
+    const cached = await cache.match(request.url, { ignoreSearch: true });
+    if (cached) {
+      const [next, previous] = await Promise.all([
+        response.clone().json().catch(() => null),
+        cached.clone().json().catch(() => null),
+      ]);
+      if (next?.contentVersion !== previous?.contentVersion) {
+        await purgePeriodPacks(cache);
+      }
+    }
+    await cache.put(request.url, response.clone());
+    return response;
+  } catch {
+    const cached = await cache.match(request.url, { ignoreSearch: true });
+    return cached || Response.error();
+  }
+}
+
 async function handleRequest(request) {
   const cache = await caches.open(CACHE);
   const url = new URL(request.url);
   if (isImmutableAsset(url)) return cacheFirst(cache, request);
   if (isAppShell(request, url)) return networkFirst(cache, request);
+  if (isContentIndex(url)) return handleContentIndex(cache, request);
   return staleWhileRevalidate(cache, request);
 }

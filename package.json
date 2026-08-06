@@ -21,7 +21,8 @@
     "validate:unlock-rules": "node scripts/validate-unlock-rules.mjs",
     "validate:readings": "node scripts/validate-readings.mjs",
     "validate:all": "node scripts/validate-all.mjs",
-    "validate:monthly-report": "node scripts/validate-monthly-report.mjs"
+    "validate:monthly-report": "node scripts/validate-monthly-report.mjs",
+    "validate:sw-content": "node scripts/validate-sw-content.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
