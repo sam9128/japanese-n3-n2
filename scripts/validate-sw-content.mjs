@@ -118,12 +118,10 @@ check("lesson packs are recognised", () => {
 });
 
 // ------------------------------------------------------------------ the bug
-check("a new contentVersion drops the cached lesson packs", async () => {
-  const api = loadWorker(async () =>
-    jsonResponse({ contentVersion: "2026-08-jlpt-daimon" }),
-  );
+check("a new contentHash drops the cached lesson packs", async () => {
+  const api = loadWorker(async () => jsonResponse({ contentHash: "cf59c896" }));
   const cache = makeCache({
-    [INDEX]: { contentVersion: "2026-08-jmdict-rebuild" },
+    [INDEX]: { contentHash: "0123abcd" },
     [PACK]: { reading: [] },
     "https://example.test/content/periods/115-08.json": { reading: [] },
   });
@@ -138,16 +136,45 @@ check("a new contentVersion drops the cached lesson packs", async () => {
   );
 });
 
-check("an unchanged contentVersion keeps the packs", async () => {
-  const api = loadWorker(async () =>
-    jsonResponse({ contentVersion: "2026-08-jlpt-daimon" }),
-  );
+check("an unchanged contentHash keeps the packs", async () => {
+  const api = loadWorker(async () => jsonResponse({ contentHash: "cf59c896" }));
   const cache = makeCache({
-    [INDEX]: { contentVersion: "2026-08-jlpt-daimon" },
+    [INDEX]: { contentHash: "cf59c896" },
     [PACK]: { reading: [] },
   });
   await api.handleContentIndex(cache, { url: INDEX });
-  assert.deepEqual(cache.deleted, [], "packs must survive an unchanged version");
+  assert.deepEqual(cache.deleted, [], "packs must survive an unchanged hash");
+});
+
+check("the hash decides even when contentVersion has not moved", async () => {
+  // The exact case that shipped: a full lesson rebuild under the previous
+  // contentVersion string, because that field is a hand-written migration
+  // marker rather than a description of the content.
+  const api = loadWorker(async () =>
+    jsonResponse({ contentVersion: "2026-08-jmdict-rebuild", contentHash: "new" }),
+  );
+  const cache = makeCache({
+    [INDEX]: { contentVersion: "2026-08-jmdict-rebuild", contentHash: "old" },
+    [PACK]: { reading: [] },
+  });
+  await api.handleContentIndex(cache, { url: INDEX });
+  assert.deepEqual(
+    cache.deleted,
+    ["https://example.test/content/periods/115-07.json"],
+    "a rebuild must reach the learner even if contentVersion was not bumped",
+  );
+});
+
+check("an index without contentHash falls back to contentVersion", async () => {
+  const api = loadWorker(async () => jsonResponse({ contentVersion: "b" }));
+  const cache = makeCache({
+    [INDEX]: { contentVersion: "a" },
+    [PACK]: { reading: [] },
+  });
+  await api.handleContentIndex(cache, { url: INDEX });
+  assert.deepEqual(cache.deleted, [
+    "https://example.test/content/periods/115-07.json",
+  ]);
 });
 
 check("offline falls back to the cached index", async () => {
@@ -193,4 +220,4 @@ if (failures.length) {
   console.error(JSON.stringify({ ok: false, failures }, null, 2));
   process.exit(1);
 }
-console.log(JSON.stringify({ ok: true, cases: 8 }, null, 2));
+console.log(JSON.stringify({ ok: true, cases: 10 }, null, 2));

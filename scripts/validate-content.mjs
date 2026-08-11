@@ -46,6 +46,11 @@ const hasJapanese=(value)=>/[\u3040-\u30ff\u3400-\u9fff]/.test(value||"");
 const hasChineseMarker=(value)=>/[這裡還讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
 const sourceQuestions=new Map();
 const awkwardPatterns=[/するください/,/するもらえ/,/事前に前日まで/,/までに前日まで/,/早めに前日まで/];
+// The service worker drops its cached lesson packs when this changes, which is
+// how a rebuild reaches the learner on their first visit. If it ever goes
+// missing the worker silently falls back to the hand-written contentVersion,
+// which is exactly the field that failed to move through a full rebuild.
+if(!/^[0-9a-f]{16}$/.test(index.contentHash||""))throw new Error(`index.contentHash missing or malformed: ${index.contentHash}`);
 if(new Set(all.reading.map(item=>item.content)).size!==52)throw new Error("reading passages are not all unique");
 if(new Set(all.reading.map(item=>item.headline)).size!==52)throw new Error("reading titles are not all unique");
 for(const item of all.reading){

@@ -180,7 +180,13 @@ async function handleContentIndex(cache, request) {
         response.clone().json().catch(() => null),
         cached.clone().json().catch(() => null),
       ]);
-      if (next?.contentVersion !== previous?.contentVersion) {
+      // contentHash is derived from the lesson packs themselves, so it changes
+      // exactly when they do. contentVersion is a hand-written marker for a
+      // one-off progress migration and stayed put through a full content
+      // rebuild, which is why it is only the fallback.
+      const nextId = next?.contentHash ?? next?.contentVersion;
+      const previousId = previous?.contentHash ?? previous?.contentVersion;
+      if (nextId !== previousId) {
         await purgePeriodPacks(cache);
       }
     }

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { grammarExamples } from "./source/grammar-examples.mjs";
 import { buildReading, buildListening } from "./source/build-media.mjs";
 import { readingFormatFor, listeningFormatFor } from "./source/jlpt-formats.mjs";
@@ -514,12 +515,34 @@ const questionAudit=auditGeneratedQuestions();
 // against the old word says nothing about the new one, so the app drops them once,
 // keyed on contentVersion.
 const reissuedIds = readSource("vocab-reissued-ids.json").ids;
-const index = { generatedAt:new Date().toISOString(), contentVersion:"2026-08-jmdict-rebuild", reissuedIds, periods, counts:{vocabulary:vocabulary.length,grammar:grammar.length,reading:reading.length,listening:listening.length,monthlyChecks:12,n3Mocks:5,n2Mocks:2}, unlockSchedule:periods.map((period,i)=>({period,vocabulary:vocabCaps[i],grammar:grammarCaps[i]})), sources:[{name:"Language-Learning-decks",url:"https://github.com/vbvss199/Language-Learning-decks",license:"MIT / CC BY-SA 4.0 frequency data"},{name:"EDRDG/JMdict",url:"https://www.edrdg.org/",license:"EDRDG licence"},{name:"時雨之町",url:"https://www.sigure.tw/",use:"classification and grammar cross-check only; no copied explanations, examples, articles, or quizzes"},{name:"JLPT sample questions",url:"https://www.jlpt.jp/e/samples/sampleindex.html",use:"link only"}] };
+// Lesson packs, hashed. The service worker drops its cached packs when this
+// changes, so a rebuild reaches the learner on their first visit rather than
+// their second.
+//
+// Kept separate from contentVersion, which is a hand-written marker for the
+// one-off progress migration above: tying that to the content would re-clear the
+// learner's ratings on every future rebuild. This one has to change whenever the
+// lessons do, and nothing else — which a hand-edited string does not, as the
+// JLPT rebuild proved by shipping under the previous version's name.
+const packPayloads = periods.map((period) => ({
+  period,
+  vocabulary: vocabulary.filter((x) => x.unlockPeriod === period),
+  grammar: grammar.filter((x) => x.unlockPeriod === period),
+  reading: reading.filter((x) => x.unlockPeriod === period),
+  listening: listening.filter((x) => x.unlockPeriod === period),
+  assessments: assessments.filter((x) => x.unlockPeriod === period),
+}));
+const contentHash = createHash("sha256")
+  .update(packPayloads.map((payload) => JSON.stringify(payload)).join("\n"))
+  .digest("hex")
+  .slice(0, 16);
+const index = { generatedAt:new Date().toISOString(), contentVersion:"2026-08-jmdict-rebuild", contentHash, reissuedIds, periods, counts:{vocabulary:vocabulary.length,grammar:grammar.length,reading:reading.length,listening:listening.length,monthlyChecks:12,n3Mocks:5,n2Mocks:2}, unlockSchedule:periods.map((period,i)=>({period,vocabulary:vocabCaps[i],grammar:grammarCaps[i]})), sources:[{name:"Language-Learning-decks",url:"https://github.com/vbvss199/Language-Learning-decks",license:"MIT / CC BY-SA 4.0 frequency data"},{name:"EDRDG/JMdict",url:"https://www.edrdg.org/",license:"EDRDG licence"},{name:"時雨之町",url:"https://www.sigure.tw/",use:"classification and grammar cross-check only; no copied explanations, examples, articles, or quizzes"},{name:"JLPT sample questions",url:"https://www.jlpt.jp/e/samples/sampleindex.html",use:"link only"}] };
 if (!dryRun) {
   fs.mkdirSync(outRoot,{recursive:true});
-  for (const period of periods) {
-    const payload = { period, vocabulary:vocabulary.filter(x=>x.unlockPeriod===period), grammar:grammar.filter(x=>x.unlockPeriod===period), reading:reading.filter(x=>x.unlockPeriod===period), listening:listening.filter(x=>x.unlockPeriod===period), assessments:assessments.filter(x=>x.unlockPeriod===period) };
-    fs.writeFileSync(path.join(outRoot,`${period}.json`),JSON.stringify(payload));
+  // Written from the same payloads the hash was taken over, so the two can never
+  // describe different content.
+  for (const payload of packPayloads) {
+    fs.writeFileSync(path.join(outRoot,`${payload.period}.json`),JSON.stringify(payload));
   }
   fs.writeFileSync(path.join(root,"public","content","index.json"),JSON.stringify(index,null,2));
 }
