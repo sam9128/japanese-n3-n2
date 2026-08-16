@@ -89,6 +89,23 @@ function interleave(groups, random, lateOnly = new Set()) {
   return placed.sort((a, b) => a.at - b.at).map((entry) => entry.item);
 }
 
+// The N3 sitting is 115/12/06 and the five N3 mocks run in 115/11-12, so every
+// N3 item must be released within the first six months. The split is set a
+// little past halfway because the N3 half has to supply more exam questions:
+// five N3 mocks against two N2 ones.
+const HALF_YEAR = 6;
+const READING_N3_ITEMS = 28;
+const LISTENING_N3_ITEMS = 60;
+
+// Release month within the half of the year this item belongs to.
+function halfYearPeriod(periods, index, n3Count, total) {
+  const isN3 = index < n3Count;
+  const offset = isN3 ? 0 : HALF_YEAR;
+  const within = isN3 ? index : index - n3Count;
+  const size = isN3 ? n3Count : total - n3Count;
+  return periods[offset + Math.min(HALF_YEAR - 1, Math.floor((within * HALF_YEAR) / size))];
+}
+
 const SIGURE_READING = "https://www.sigure.tw/quiz/reading/medium/";
 
 export function buildReading(periods, spreadPeriod) {
@@ -106,13 +123,11 @@ export function buildReading(periods, spreadPeriod) {
     const format = readingFormatFor(kernel.format);
     const id = `reading-${String(index + 1).padStart(2, "0")}`;
     const content = passageText(kernel);
-    // 主張理解 and 統合理解 are N2-only 大問; the rest track the year's N3→N2 arc.
-    const level =
-      kernel.format === "shuchou" || kernel.format === "tougou"
-        ? "N2"
-        : index < 32
-          ? "N3"
-          : "N2";
+    // Level and release month are decided together. Spreading evenly across all
+    // twelve months while calling the first half N3 meant N3 passages were still
+    // being released in 116-02 — months after the N3 sitting in 115/12 and after
+    // the five N3 mocks, which then had too little N3 material to draw on.
+    const level = index < READING_N3_ITEMS ? "N3" : "N2";
 
     const questions = kernel.questions.map((q, qi) => ({
       id: `${id}-q${qi + 1}`,
@@ -135,7 +150,7 @@ export function buildReading(periods, spreadPeriod) {
       reading: kernel.genre,
       meaningZh: format.hintZh,
       audioText: "",
-      unlockPeriod: periods[spreadPeriod(index, ordered.length)],
+      unlockPeriod: halfYearPeriod(periods, index, READING_N3_ITEMS, ordered.length),
       tags: [kernel.theme, kernel.themeZh, kernel.genre, format.jlpt],
       sourceRefs: ["self-authored", SIGURE_READING],
       sourceNoteZh:
@@ -171,8 +186,7 @@ export function buildListening(periods, spreadPeriod) {
     const id = `listening-${String(index + 1).padStart(3, "0")}`;
     const lines = scriptLines(kernel);
     const audioText = lines.join(" ");
-    const level =
-      kernel.format === "tougou" ? "N2" : index < 64 ? "N3" : "N2";
+    const level = index < LISTENING_N3_ITEMS ? "N3" : "N2";
 
     const questions = kernelQuestions(kernel).map((q, qi) => ({
       id: `${id}-q${qi + 1}`,
@@ -200,7 +214,7 @@ export function buildListening(periods, spreadPeriod) {
       reading: format.jlpt,
       meaningZh: format.hintZh,
       audioText,
-      unlockPeriod: periods[spreadPeriod(index, ordered.length)],
+      unlockPeriod: halfYearPeriod(periods, index, LISTENING_N3_ITEMS, ordered.length),
       tags: [kernel.theme, format.jlpt],
       sourceRefs: ["self-authored", "https://www.jlpt.jp/e/samples/sampleindex.html"],
       license: "CC BY 4.0 — 本計畫自編",

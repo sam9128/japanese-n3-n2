@@ -42,8 +42,41 @@ for(const card of all.grammar){
     if(!card.usageZh||card.usageZh.length<15||!/接續|接在|形|＋/.test(card.usageZh))throw new Error(`grammar connection note missing: ${card.id}`);
   if(!card.referenceNoteZh?.includes("自編"))throw new Error(`missing grammar reference disclaimer: ${card.id}`);
 }
+// The N3 sitting is 115/12/06 and the five N3 mocks run in 115/11\u201312. Reading and
+// listening used to spread evenly across all twelve months regardless of level,
+// so N3 material was still being released in 116-02 \u2014 after the exam, and after
+// the mocks that needed it, which left the last N3 mocks short of source
+// questions. Both halves of the year must hold their own level.
+{
+  const n3End=index.periods.indexOf("115-12");
+  for(const item of [...all.reading,...all.listening]){
+    const at=index.periods.indexOf(item.unlockPeriod);
+    if(item.level==="N3"&&at>n3End)throw new Error(`N3 material released after the N3 exam: ${item.id} (${item.unlockPeriod})`);
+    if(item.level==="N2"&&at<=n3End)throw new Error(`N2 material released in the N3 half: ${item.id} (${item.unlockPeriod})`);
+  }
+}
+
+// A mock is meant to simulate the real sitting, so its section balance has to
+// match the real paper. Monthly checks are progress checks and deliberately run
+// lighter on \u8aad\u89e3/\u8074\u89e3, so they are not held to this.
+{
+  const realShare={N3:{"\u6587\u5b57\u30fb\u8a9e\u5f59":0.34,"\u6587\u6cd5":0.23,"\u8aad\u89e3":0.16,"\u8074\u89e3":0.27},N2:{"\u6587\u5b57\u30fb\u8a9e\u5f59":0.30,"\u6587\u6cd5":0.21,"\u8aad\u89e3":0.20,"\u8074\u89e3":0.29}};
+  const order=["\u6587\u5b57\u30fb\u8a9e\u5f59","\u6587\u6cd5","\u8aad\u89e3","\u8074\u89e3"];
+  for(const exam of all.assessments.filter(x=>x.kind==="mock")){
+    const counts={};
+    for(const question of exam.questions)counts[question.section]=(counts[question.section]||0)+1;
+    for(const [section,share] of Object.entries(realShare[exam.level])){
+      const actual=(counts[section]||0)/exam.questions.length;
+      if(Math.abs(actual-share)>0.04)throw new Error(`mock section share off: ${exam.id} ${section} ${(actual*100).toFixed(0)}% vs ${(share*100).toFixed(0)}%`);
+    }
+    // A real paper groups its sections; it does not alternate one question at a time.
+    const seen=exam.questions.map(q=>order.indexOf(q.section));
+    for(let i=1;i<seen.length;i+=1)if(seen[i]<seen[i-1])throw new Error(`exam sections are not in paper order: ${exam.id} at question ${i+1}`);
+  }
+}
+
 const hasJapanese=(value)=>/[\u3040-\u30ff\u3400-\u9fff]/.test(value||"");
-const hasChineseMarker=(value)=>/[這裡還讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
+const hasChineseMarker=(value)=>/[這裡讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
 const sourceQuestions=new Map();
 const awkwardPatterns=[/するください/,/するもらえ/,/事前に前日まで/,/までに前日まで/,/早めに前日まで/];
 // The service worker drops its cached lesson packs when this changes, which is

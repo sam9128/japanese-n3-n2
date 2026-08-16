@@ -363,11 +363,78 @@ function takeUnused(items, used, seed, key = (item)=>item.id, label = "題庫") 
 const SECTION_VOCAB = "文字・語彙";
 const SECTION_GRAMMAR = "文法";
 
+// How a paper is made up.
+//
+// The item types were already JLPT-shaped, but the paper was not: questions
+// cycled 文字・語彙 → 文法 → 読解 → 聴解 one at a time, which left every mock with
+// 13% listening against the real exam's 27–29%, and interleaved the sections
+// rather than grouping them the way a real paper does.
+//
+// The mocks now follow the real proportions. The monthly checks deliberately do
+// not: the listening bank holds 112 questions and no exam question may reuse a
+// source, so faithful listening everywhere would need 121+. The mocks are what
+// simulate the real sitting, so they get the full share and the monthly checks —
+// progress checks, not rehearsals — run lighter at 20%.
+// Mock weights are the real papers' own question counts, so the proportions come
+// out right at any length. Monthly weights are chosen to fit what is left: the
+// N3 listening bank holds 62 questions and the five N3 mocks claim 40 of them,
+// which leaves three per monthly check.
+const EXAM_BLUEPRINTS = {
+  monthly: { vocab: 9, grammar: 5, reading: 3, listening: 3 },
+  // N3 paper: 文字・語彙 35, 文法 23, 読解 16, 聴解 28
+  "mock-N3": { vocab: 35, grammar: 23, reading: 16, listening: 28 },
+  // N2 paper: 文字・語彙 32, 文法 22, 読解 21, 聴解 31
+  "mock-N2": { vocab: 32, grammar: 22, reading: 21, listening: 31 },
+};
+
+// Within 文字・語彙, the real paper's own weighting between the three 大問 we build.
+const VOCAB_MIX = {
+  N3: { kanji: 8, orthography: 6, cloze: 11 },
+  N2: { kanji: 5, orthography: 5, cloze: 7 },
+};
+
+// Largest remainder, so the parts always add back up to the whole.
+function allocate(total, weights) {
+  const sum = Object.values(weights).reduce((n, w) => n + w, 0);
+  const exact = Object.entries(weights).map(([key, weight]) => ({
+    key,
+    value: (total * weight) / sum,
+  }));
+  const counts = Object.fromEntries(exact.map(({ key, value }) => [key, Math.floor(value)]));
+  let left = total - Object.values(counts).reduce((n, v) => n + v, 0);
+  for (const { key } of [...exact].sort((a, b) => (b.value % 1) - (a.value % 1))) {
+    if (left <= 0) break;
+    counts[key] += 1;
+    left -= 1;
+  }
+  return counts;
+}
+
+/**
+ * The question types of one paper, in the order a real paper asks them.
+ *
+ * Grouped by section — all 文字・語彙 first, then 文法, 読解, 聴解 — and inside
+ * 文字・語彙 in the paper's own order of 漢字読み, 表記, 文脈規定.
+ */
+function examPlan(kind, level, questionCount) {
+  const blueprint = EXAM_BLUEPRINTS[kind === "mock" ? `mock-${level}` : "monthly"];
+  const sections = allocate(questionCount, blueprint);
+  const vocab = allocate(sections.vocab, VOCAB_MIX[level] || VOCAB_MIX.N3);
+  return [
+    ...Array(vocab.kanji).fill("kanji"),
+    ...Array(vocab.orthography).fill("orthography"),
+    ...Array(vocab.cloze).fill("vocab-cloze"),
+    ...Array(sections.grammar).fill("grammar-cloze"),
+    ...Array(sections.reading).fill("reading"),
+    ...Array(sections.listening).fill("listening"),
+  ];
+}
+
 // Underline substitute: the real paper underlines the target, which plain text
 // in the UI cannot do, so it is bracketed instead.
 const mark = (text) => `＿${text}＿`;
 
-function makeExamQuestions(id, level, period, questionCount, catalog) {
+function makeExamQuestions(id, level, period, questionCount, catalog, kind) {
   const maxPeriod = periods.indexOf(period);
   const vocabPool = orderedLevelPool(catalog.vocabulary,level,maxPeriod);
   // Sentence-context items need the word to actually appear in its own example.
@@ -383,6 +450,7 @@ function makeExamQuestions(id, level, period, questionCount, catalog) {
   const listeningPool = orderedLevelPool(catalog.listening,level,maxPeriod).flatMap((item)=>item.questions.map((question,questionIndex)=>({item,question,questionIndex,id:`${item.id}-q${questionIndex+1}`})));
   const used=assessmentUsage;
   const seedBase = [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const plan = examPlan(kind, level, questionCount);
 
   // Distractors for 文脈規定 must not also fit the blank. Without semantic data
   // the cheapest reliable proxy is the Chinese gloss: words whose glosses share
@@ -397,42 +465,42 @@ function makeExamQuestions(id, level, period, questionCount, catalog) {
   return Array.from({length:questionCount}, (_, index) => {
     const seed = seedBase * 17 + index * 13;
     const qid = `${id}-q${index+1}`;
-    const type = index % 7;
+    const type = plan[index];
 
     // ---------------------------------------------------------- 文字・語彙
-    if (type === 0) {
+    if (type === "kanji") {
       // 漢字読み — the reading of an underlined word, read in a sentence.
       const item=takeUnused(kanjiPool,used.vocabulary,seed,undefined,`${id} 漢字読み`);
       const distractors=kanjiPool.filter((candidate)=>candidate.id!==item.id&&candidate.reading!==item.reading).slice(seed%Math.max(1,kanjiPool.length-3)).concat(kanjiPool).map((candidate)=>candidate.reading);
       return { id:qid, section:SECTION_VOCAB, type:"漢字読み", instruction:"＿＿＿の言葉の読み方として最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replace(item.term,mark(item.term)), prompt:`${mark(item.term)}の読み方はどれですか。`, ...rotateOptions(item.reading,distractors,seed), explanationZh:`「${item.term}」讀作「${item.reading}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"kanji-reading" };
     }
-    if (type === 1) {
+    if (type === "orthography") {
       // 表記 — the kanji for a word shown in kana, again inside its sentence.
       const item=takeUnused(kanjiPool,used.vocabulary,seed,undefined,`${id} 表記`);
       const distractors=kanjiPool.filter((candidate)=>candidate.id!==item.id&&candidate.reading!==item.reading).slice(seed%Math.max(1,kanjiPool.length-3)).concat(kanjiPool).map((candidate)=>candidate.term);
-      return { id:qid, section:SECTION_VOCAB, type:"表記", instruction:"＿＿＿の言葉を漢字で書くとき、最もよいものを一つ選びなさい。", passage:item.examples[0].ja.replace(item.term,mark(item.reading)), prompt:`${mark(item.reading)}を漢字で書くとどれですか。`, ...rotateOptions(item.term,distractors,seed), explanationZh:`「${item.reading}」的正確表記是「${item.term}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"orthography" };
+      return { id:qid, section:SECTION_VOCAB, type:"表記", instruction:"＿＿＿の言葉を漢字で書くとき、最もよいものを一つ選びなさい。", passage:item.examples[0].ja.replaceAll(item.term,mark(item.reading)), prompt:`${mark(item.reading)}を漢字で書くとどれですか。`, ...rotateOptions(item.term,distractors,seed), explanationZh:`「${item.reading}」的正確表記是「${item.term}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"orthography" };
     }
-    if (type === 2) {
+    if (type === "vocab-cloze") {
       // 文脈規定 — choose the word that belongs in the blank.
       const item=takeUnused(clozePool,used.vocabulary,seed,undefined,`${id} 文脈規定`);
       const pool=clozePool.filter((candidate)=>candidate.id!==item.id&&candidate.term!==item.term&&disjointGloss(item,candidate)&&!item.examples[0].ja.includes(candidate.term));
       const distractors=pool.slice(seed%Math.max(1,pool.length-3)).concat(pool).map((candidate)=>candidate.term);
-      return { id:qid, section:SECTION_VOCAB, type:"文脈規定", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replace(item.term,"（　）"), prompt:"（　）に入る言葉はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」${item.reading&&item.reading!==item.term?`，讀作「${item.reading}」`:""}，意思是「${item.meaningZh}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"vocab-cloze" };
+      return { id:qid, section:SECTION_VOCAB, type:"文脈規定", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replaceAll(item.term,"（　）"), prompt:"（　）に入る言葉はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」${item.reading&&item.reading!==item.term?`，讀作「${item.reading}」`:""}，意思是「${item.meaningZh}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"vocab-cloze" };
     }
 
     // -------------------------------------------------------------- 文法
-    if (type === 3 || type === 6) {
+    if (type === "grammar-cloze") {
       // 文法形式の判断 — choose the pattern that belongs in the blank. Distractors
       // must express a different function, or more than one could be defensible.
       const item=takeUnused(grammarClozePool,used.grammar,seed+(type===6?7:0),undefined,`${id} 文法形式`);
       const correctFunction=grammarFunctionJa(item.term);
       const pool=grammarClozePool.filter((candidate)=>candidate.id!==item.id&&grammarFunctionJa(candidate.term)!==correctFunction);
       const distractors=pool.slice(seed%Math.max(1,pool.length-3)).concat(pool).map((candidate)=>candidate.term);
-      return { id:qid, section:SECTION_GRAMMAR, type:"文法形式の判断", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replace(patternCore(item.term),"（　）"), prompt:"（　）に入る文法はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」，${item.meaningZh}此處用來「${correctFunction}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"grammar-cloze" };
+      return { id:qid, section:SECTION_GRAMMAR, type:"文法形式の判断", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replaceAll(patternCore(item.term),"（　）"), prompt:"（　）に入る文法はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」，${item.meaningZh}此處用來「${correctFunction}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"grammar-cloze" };
     }
 
     // ------------------------------------------------------- 読解・聴解
-    if (type === 4) {
+    if (type === "reading") {
       const entry=takeUnused(readingPool,used.reading,seed,undefined,`${id} 読解`);
       return { id:qid, section:"読解", type:entry.question.jlptType, instruction:"次の文章を読んで、質問に答えなさい。", passage:entry.item.content, prompt:entry.question.prompt, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"reading-source" };
     }
@@ -442,7 +510,7 @@ function makeExamQuestions(id, level, period, questionCount, catalog) {
 }
 
 function makeAssessment(id, title, level, period, minutes, questionCount, kind, catalog) {
-  return { id, title, level, category:"assessment", kind, unlockPeriod:period, durationMinutes:minutes, threshold:60, scoreTotal:100, sourceRefs:["self-authored", "https://www.jlpt.jp/e/samples/sampleindex.html"], license:"CC BY 4.0 — 自編題目；官方連結僅供題型參考", questionCount, questions:makeExamQuestions(id,level,period,questionCount,catalog) };
+  return { id, title, level, category:"assessment", kind, unlockPeriod:period, durationMinutes:minutes, threshold:60, scoreTotal:100, sourceRefs:["self-authored", "https://www.jlpt.jp/e/samples/sampleindex.html"], license:"CC BY 4.0 — 自編題目；官方連結僅供題型參考", questionCount, questions:makeExamQuestions(id,level,period,questionCount,catalog,kind) };
 }
 
 const vocabulary = loadWords();
@@ -461,7 +529,7 @@ function auditGeneratedQuestions() {
   // Catches Chinese prose leaking into a Japanese option. 個 and 該 were in this
   // set but are ordinary Japanese kanji (数個, 該当), so they rejected real
   // vocabulary once the word list was rebuilt from JMdict.
-  const hasChineseMarker=(value)=>/[這裡還讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
+  const hasChineseMarker=(value)=>/[這裡讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
   // Was a whitelist of Chinese words the old templates happened to use, which
   // rejected perfectly good Chinese written any other way. An explanation is
   // Chinese if, once the Japanese it quotes in 「」 is removed, what is left has
