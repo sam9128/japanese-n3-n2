@@ -1366,7 +1366,23 @@ function MediaView({
   updatePage,
 }) {
   const type = pageState.type || "reading";
-  const list = data[type].filter((x) => isUnlocked(x, activePeriod));
+  // That month's own material, not everything unlocked up to it. Cumulative
+  // meant the list grew every month and the current month's items sat at the
+  // bottom, so "switch month" barely changed what was on screen.
+  const list = data[type].filter((x) => x.unlockPeriod === activePeriod);
+  const counts = {
+    reading: data.reading.filter((x) => x.unlockPeriod === activePeriod).length,
+    listening: data.listening.filter((x) => x.unlockPeriod === activePeriod)
+      .length,
+  };
+  // Answered means every question of the item has been answered: that is when
+  // the item gets rated, and the rating says whether they were all correct.
+  const answeredState = (item) => {
+    const rating = store.progress[item.id]?.rating;
+    if (!rating) return null;
+    return rating === "good" ? "correct" : "partial";
+  };
+  const answeredCount = list.filter((x) => answeredState(x)).length;
   const rawSelected = Number(pageState.selected) || 0;
   const selected = list.length
     ? ((rawSelected % list.length) + list.length) % list.length
@@ -1500,39 +1516,56 @@ function MediaView({
           className={type === "reading" ? "active" : ""}
           onClick={() => selectType("reading")}
         >
-          閱讀 52
+          閱讀 {counts.reading}
         </button>
         <button
           className={type === "listening" ? "active" : ""}
           onClick={() => selectType("listening")}
         >
-          聽力 104
+          聽力 {counts.listening}
         </button>
       </div>
       <div className="media-layout">
         <aside className="lesson-list">
-          {list.slice(0, 30).map((x, i) => (
-            <button
-              key={x.id}
-              className={i === selected ? "active" : ""}
-              onClick={() =>
-                updatePage((current) => ({
-                  ...current,
-                  selected: i,
-                  transcript: false,
-                  replays: 0,
-                }))
-              }
-            >
-              <b>{String(i + 1).padStart(2, "0")}</b>
-              <span>
-                {x.term}
-                <small>
-                  {x.estimatedMinutes} 分鐘 · 難度 {x.difficulty}
-                </small>
-              </span>
-            </button>
-          ))}
+          <p className="lesson-list-head">
+            {formatPeriod(activePeriod)} · 共 {list.length} 題 · 已作答{" "}
+            {answeredCount}
+          </p>
+          {list.map((x, i) => {
+            const answered = answeredState(x);
+            return (
+              <button
+                key={x.id}
+                className={`${i === selected ? "active" : ""}${
+                  answered ? ` answered ${answered}` : ""
+                }`}
+                onClick={() =>
+                  updatePage((current) => ({
+                    ...current,
+                    selected: i,
+                    transcript: false,
+                    replays: 0,
+                  }))
+                }
+              >
+                <b>{String(i + 1).padStart(2, "0")}</b>
+                <span>
+                  {x.term}
+                  <small>
+                    {x.estimatedMinutes} 分鐘 · 難度 {x.difficulty}
+                  </small>
+                </span>
+                {answered ? (
+                  <i
+                    className="answered-mark"
+                    title={answered === "correct" ? "已作答，全對" : "已作答，有錯"}
+                  >
+                    {answered === "correct" ? "✓" : "!"}
+                  </i>
+                ) : null}
+              </button>
+            );
+          })}
         </aside>
         <article className="media-workspace">
           <div className="media-head">
@@ -1544,7 +1577,14 @@ function MediaView({
                 </span>
                 <time>{item.dateline}</time>
               </div>
-              <h2>{item.headline || item.term}</h2>
+              <h2>
+                {item.headline || item.term}
+                {answeredState(item) ? (
+                  <span className={`answered-tag ${answeredState(item)}`}>
+                    {answeredState(item) === "correct" ? "已作答 · 全對" : "已作答 · 有錯"}
+                  </span>
+                ) : null}
+              </h2>
               {item.meaningZh ? (
                 <p className="format-hint">{item.meaningZh}</p>
               ) : null}

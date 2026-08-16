@@ -303,6 +303,58 @@ a {
 .news-article.info-table p + p {
   margin-top: 2px;
 }
+/* Answered state on the lesson list and the item heading. Two states, because
+   "done" and "done but got some wrong" call for different follow-up. */
+.lesson-list-head {
+  font-size: 12px;
+  color: #68736a;
+  margin: 0 0 10px;
+  padding: 0 4px;
+}
+.lesson-list button {
+  position: relative;
+}
+.lesson-list button.answered span {
+  color: #6b766e;
+}
+.answered-mark {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  color: #fff;
+}
+.lesson-list button.correct .answered-mark {
+  background: var(--green);
+}
+.lesson-list button.partial .answered-mark {
+  background: #b8863b;
+}
+.answered-tag {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 10px;
+  border-radius: 4px;
+  padding: 3px 9px;
+  font: 700 11px/1.6 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+}
+.answered-tag.correct {
+  background: #e5ebe3;
+  color: var(--green);
+}
+.answered-tag.partial {
+  background: #f5ead6;
+  color: #8a5f1c;
+}
 .question-number {
   display: inline-block;
   background: var(--green);
