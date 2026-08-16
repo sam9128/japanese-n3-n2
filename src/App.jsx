@@ -270,11 +270,53 @@ function StudyQuizPanel({
   const correctCount = Object.values(answers).filter((item) => item.correct)
     .length;
   const finished = questions.length > 0 && answeredCount >= questions.length;
+  const cardRef = useRef(null);
+  const advance = finished ? onFinish : onNext;
+  // Advancing used to leave the reader parked wherever the previous answer had
+  // pushed them — the new question rendered above the fold. Bring the card back
+  // to the top of the viewport on every change instead.
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node) return;
+    // Measured after a frame: removing the previous answer panel shrinks the
+    // page, so a position read during this render is already stale and lands
+    // short of the question.
+    // Straight after commit, with no animation and no rAF. The card's own top
+    // does not move when the answer panel goes — the panel is inside it — so
+    // there is nothing to wait for. Both alternatives were tried and neither
+    // holds: a smooth scroll is cancelled by the page shrinking underneath it,
+    // and a scroll issued from inside requestAnimationFrame is reset before the
+    // next paint.
+    const top = node.getBoundingClientRect().top + window.scrollY - 12;
+    // Only ever scroll up — never drag the reader down to a card they can see.
+    if (window.scrollY > top) window.scrollTo(0, top);
+  }, [currentIndex, quiz?.id]);
+  // On a keyboard: 1–4 answers, Enter or Space moves on. Cheap, and it makes a
+  // long study session on a laptop far less tedious than reaching for the mouse.
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.target.matches?.("input, textarea")) return;
+      if (!answer && /^[1-4]$/.test(event.key)) {
+        const index = Number(event.key) - 1;
+        if (index < (question?.options.length || 0)) {
+          event.preventDefault();
+          onAnswer(index);
+        }
+        return;
+      }
+      if (answer && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        advance();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [answer, question, onAnswer, advance]);
   if (!question) return null;
   const card = cardsById?.get(question.itemId);
   const streak = Number(answer?.streak) || 0;
   return (
-    <div className="lesson-card study-quiz-card">
+    <div className="lesson-card study-quiz-card" ref={cardRef}>
       <div className="lesson-top">
         <span>
           {reviewMode ? "複習" : "本批練習"} · 第 {currentIndex + 1} /{" "}
@@ -365,16 +407,13 @@ function StudyQuizPanel({
         <span>
           已答 {answeredCount} · 正確 {correctCount} · 共 {questions.length}
           {!reviewMode && outstanding > 0 ? ` · 本批還剩 ${outstanding} 張` : ""}
+          <b className="quiz-hint">
+            {answer ? "Enter 繼續" : "按 1–4 選答案"}
+          </b>
         </span>
-        {finished ? (
-          <button onClick={onFinish}>
-            {reviewMode ? "下一輪" : "完成這一輪"}
-          </button>
-        ) : (
-          <button disabled={!answer} onClick={onNext}>
-            下一題
-          </button>
-        )}
+        <button disabled={!answer} onClick={advance}>
+          {finished ? (reviewMode ? "下一輪" : "完成這一輪") : "下一題"}
+        </button>
       </footer>
     </div>
   );

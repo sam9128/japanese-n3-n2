@@ -641,6 +641,40 @@ a {
 .study-quiz-card {
   min-width: 0;
 }
+/* The answer panel is ~490px tall — more than half a phone screen — and grows
+   below the options, which pushed 下一題 430px past the fold. Every question then
+   cost a scroll down to advance and a scroll back up to read the next one.
+   Pinning the action to the bottom of the viewport keeps it one tap regardless
+   of how long the answer runs. */
+.study-quiz-card .study-quiz-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: #fff;
+  border-top: 1px solid var(--line);
+  align-items: center;
+  gap: 12px;
+}
+.study-quiz-card .study-quiz-footer button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 22px;
+  font: inherit;
+  font-weight: 700;
+  background: #fff;
+  flex: 0 0 auto;
+}
+.study-quiz-card .study-quiz-footer button:not(:disabled) {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.quiz-hint {
+  display: block;
+  font-size: 11px;
+  color: #8a938b;
+  margin-top: 2px;
+}
 .study-quiz-main {
   padding: 26px;
 }
@@ -2001,6 +2035,10 @@ a {
   }
   .metric-grid strong {
     font-size: 27px;
+  }
+  /* Clear the fixed bottom nav, or the pinned action sits underneath it. */
+  .study-quiz-card .study-quiz-footer {
+    bottom: calc(68px + env(safe-area-inset-bottom));
   }
   .bottom-nav {
     display: grid;
