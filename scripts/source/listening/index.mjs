@@ -7,13 +7,13 @@
 import { kadai } from "./kadai.mjs";
 import { point } from "./point.mjs";
 import { gaiyou, tougouListening } from "./gaiyou.mjs";
-import { hatsuwa, sokuji } from "./short.mjs";
+import { hatsuwa, hatsuwaExtra, sokuji } from "./short.mjs";
 
 export const listeningGroups = [
   { key: "kadai", items: kadai },
   { key: "point", items: point },
   { key: "gaiyou", items: gaiyou },
-  { key: "hatsuwa", items: hatsuwa },
+  { key: "hatsuwa", items: [...hatsuwa, ...hatsuwaExtra] },
   { key: "sokuji", items: sokuji },
   { key: "tougou", items: tougouListening },
 ];

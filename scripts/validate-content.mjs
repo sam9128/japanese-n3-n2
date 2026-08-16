@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import {READING_FORMATS,LISTENING_FORMATS,readingFormatFor,listeningFormatFor} from "./source/jlpt-formats.mjs";
+import {READING_FORMATS,LISTENING_FORMATS,readingFormatFor,listeningFormatFor,READING_TOTAL,LISTENING_TOTAL} from "./source/jlpt-formats.mjs";
 const root=path.resolve(import.meta.dirname,"..","public","content");
 const index=JSON.parse(fs.readFileSync(path.join(root,"index.json"),"utf8"));
 const packs=index.periods.map(period=>JSON.parse(fs.readFileSync(path.join(root,"periods",`${period}.json`),"utf8")));
 const all={vocabulary:[],grammar:[],reading:[],listening:[],assessments:[]};
 for(const pack of packs)for(const key of Object.keys(all))all[key].push(...pack[key]);
-const expected={vocabulary:4000,grammar:240,reading:52,listening:104};
+const expected={vocabulary:4000,grammar:240,reading:52,listening:LISTENING_TOTAL};
 for(const [key,count] of Object.entries(expected))if(all[key].length!==count)throw new Error(`${key}: ${all[key].length} !== ${count}`);
 if(all.assessments.filter(x=>x.kind==="monthly").length!==12)throw new Error("monthly checks count mismatch");
 if(all.assessments.filter(x=>x.kind==="mock"&&x.level==="N3").length!==5)throw new Error("N3 mock count mismatch");
@@ -56,18 +56,20 @@ for(const card of all.grammar){
   }
 }
 
-// A mock is meant to simulate the real sitting, so its section balance has to
-// match the real paper. Monthly checks are progress checks and deliberately run
-// lighter on \u8aad\u89e3/\u8074\u89e3, so they are not held to this.
+// Every paper's section balance has to match the real one. The monthly checks
+// used to be exempt because the listening bank could not supply their share;
+// twenty more scripts removed that excuse, so they are held to it now. The
+// tolerance is wide enough for coarse rounding \u2014 one question is five points of
+// a twenty-question check, so 25% is as close to 27% as it can land.
 {
   const realShare={N3:{"\u6587\u5b57\u30fb\u8a9e\u5f59":0.34,"\u6587\u6cd5":0.23,"\u8aad\u89e3":0.16,"\u8074\u89e3":0.27},N2:{"\u6587\u5b57\u30fb\u8a9e\u5f59":0.30,"\u6587\u6cd5":0.21,"\u8aad\u89e3":0.20,"\u8074\u89e3":0.29}};
   const order=["\u6587\u5b57\u30fb\u8a9e\u5f59","\u6587\u6cd5","\u8aad\u89e3","\u8074\u89e3"];
-  for(const exam of all.assessments.filter(x=>x.kind==="mock")){
+  for(const exam of all.assessments){
     const counts={};
     for(const question of exam.questions)counts[question.section]=(counts[question.section]||0)+1;
     for(const [section,share] of Object.entries(realShare[exam.level])){
       const actual=(counts[section]||0)/exam.questions.length;
-      if(Math.abs(actual-share)>0.04)throw new Error(`mock section share off: ${exam.id} ${section} ${(actual*100).toFixed(0)}% vs ${(share*100).toFixed(0)}%`);
+      if(Math.abs(actual-share)>0.04)throw new Error(`exam section share off: ${exam.id} ${section} ${(actual*100).toFixed(0)}% vs ${(share*100).toFixed(0)}%`);
     }
     // A real paper groups its sections; it does not alternate one question at a time.
     const seen=exam.questions.map(q=>order.indexOf(q.section));
@@ -91,7 +93,7 @@ for(const item of all.reading){
   if(!item.summaryPromptZh||!item.sourceNoteZh?.includes("自編")||!item.sourceNoteZh?.includes("並非"))throw new Error(`authorship notice missing: ${item.id}`);
   if(!item.sourceRefs.includes("https://www.sigure.tw/quiz/reading/medium/"))throw new Error(`reading reference missing: ${item.id}`);
 }
-if(new Set(all.listening.map(item=>item.audioText)).size!==104)throw new Error("listening scripts are not all unique");
+if(new Set(all.listening.map(item=>item.audioText)).size!==LISTENING_TOTAL)throw new Error("listening scripts are not all unique");
 
 // Per-大問 counts, question counts and script lengths, so the JLPT structure
 // cannot quietly collapse back into one undifferentiated format.

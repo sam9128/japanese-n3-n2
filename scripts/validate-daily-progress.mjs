@@ -39,14 +39,14 @@ assert(julyFirst.expectedTotal === 16, "July 1 total should be 16");
 const julyLast = calculateDailyProgress(data, {}, new Date(2026, 6, 31, 12));
 assert(
   JSON.stringify(julyLast.categories.map((item) => item.expected)) ===
-    JSON.stringify([400, 30, 5, 10]),
+    JSON.stringify([400, 30, 5, 12]),
   "July month-end targets do not match the unlock schedule",
 );
 
 const augustFirst = calculateDailyProgress(data, {}, new Date(2026, 7, 1, 12));
 assert(
   JSON.stringify(augustFirst.categories.map((item) => item.expected)) ===
-    JSON.stringify([413, 31, 6, 11]),
+    JSON.stringify([413, 31, 6, 13]),
   "August 1 cumulative targets are incorrect",
 );
 
@@ -58,7 +58,7 @@ assert(
 
 const afterPlan = calculateDailyProgress(data, {}, new Date(2027, 6, 1, 12));
 assert(
-  afterPlan.afterPlan && afterPlan.expectedTotal === 4000 + 240 + 52 + 104,
+  afterPlan.afterPlan && afterPlan.expectedTotal === 4000 + 240 + 52 + 124,
   "after-plan total is incorrect",
 );
 

@@ -95,7 +95,11 @@ function interleave(groups, random, lateOnly = new Set()) {
 // five N3 mocks against two N2 ones.
 const HALF_YEAR = 6;
 const READING_N3_ITEMS = 28;
-const LISTENING_N3_ITEMS = 60;
+// 72 of the 124 listening items. The N3 half must supply 70 exam questions
+// (six monthly checks at five, five mocks at eight) and every item in it carries
+// one question; the N2 half needs 56 and gets 52 items plus the eight
+// two-question 統合理解, so both sides keep a little slack.
+const LISTENING_N3_ITEMS = 72;
 
 // Release month within the half of the year this item belongs to.
 function halfYearPeriod(periods, index, n3Count, total) {

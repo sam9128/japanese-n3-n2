@@ -3,7 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { grammarExamples } from "./source/grammar-examples.mjs";
 import { buildReading, buildListening } from "./source/build-media.mjs";
-import { readingFormatFor, listeningFormatFor } from "./source/jlpt-formats.mjs";
+import { readingFormatFor, listeningFormatFor, READING_TOTAL, LISTENING_TOTAL } from "./source/jlpt-formats.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dryRun = process.argv.includes("--dry-run");
@@ -375,16 +375,16 @@ const SECTION_GRAMMAR = "文法";
 // source, so faithful listening everywhere would need 121+. The mocks are what
 // simulate the real sitting, so they get the full share and the monthly checks —
 // progress checks, not rehearsals — run lighter at 20%.
-// Mock weights are the real papers' own question counts, so the proportions come
-// out right at any length. Monthly weights are chosen to fit what is left: the
-// N3 listening bank holds 62 questions and the five N3 mocks claim 40 of them,
-// which leaves three per monthly check.
+// Every paper now uses the real exam's own question counts as weights, so the
+// proportions come out right at any length. The monthly checks used to run at
+// 15% listening because the bank could not supply more; twenty extra scripts
+// took it from 112 questions to 132, which covers the 126 a full-proportion year
+// needs.
 const EXAM_BLUEPRINTS = {
-  monthly: { vocab: 9, grammar: 5, reading: 3, listening: 3 },
   // N3 paper: 文字・語彙 35, 文法 23, 読解 16, 聴解 28
-  "mock-N3": { vocab: 35, grammar: 23, reading: 16, listening: 28 },
+  N3: { vocab: 35, grammar: 23, reading: 16, listening: 28 },
   // N2 paper: 文字・語彙 32, 文法 22, 読解 21, 聴解 31
-  "mock-N2": { vocab: 32, grammar: 22, reading: 21, listening: 31 },
+  N2: { vocab: 32, grammar: 22, reading: 21, listening: 31 },
 };
 
 // Within 文字・語彙, the real paper's own weighting between the three 大問 we build.
@@ -417,7 +417,7 @@ function allocate(total, weights) {
  * 文字・語彙 in the paper's own order of 漢字読み, 表記, 文脈規定.
  */
 function examPlan(kind, level, questionCount) {
-  const blueprint = EXAM_BLUEPRINTS[kind === "mock" ? `mock-${level}` : "monthly"];
+  const blueprint = EXAM_BLUEPRINTS[level] || EXAM_BLUEPRINTS.N3;
   const sections = allocate(questionCount, blueprint);
   const vocab = allocate(sections.vocab, VOCAB_MIX[level] || VOCAB_MIX.N3);
   return [
@@ -556,7 +556,7 @@ function auditGeneratedQuestions() {
   const listeningScripts=new Set(listening.map((item)=>item.audioText));
   const awkwardPatterns=[/するください/,/するもらえ/,/事前に前日まで/,/までに前日まで/,/早めに前日まで/];
   assert(readingContents.size===52,`閱讀內容僅 ${readingContents.size}/52 篇不重複`);
-  assert(listeningScripts.size===104,`聽力稿僅 ${listeningScripts.size}/104 組不重複`);
+  assert(listeningScripts.size===LISTENING_TOTAL,`聽力稿僅 ${listeningScripts.size}/${LISTENING_TOTAL} 組不重複`);
 
   const sourceQuestions=new Map();
   for(const item of [...reading,...listening]){
