@@ -11,8 +11,10 @@ export async function loadStudyData() {
     return response.json();
   });
   const packs = await Promise.all(index.periods.map((period) => fetch(`./content/periods/${period}.json`).then((response) => response.json())));
-  const merged = { vocabulary:[], grammar:[], reading:[], listening:[], assessments:[] };
-  for (const pack of packs) for (const key of Object.keys(merged)) merged[key].push(...pack[key]);
+  const merged = { vocabulary:[], grammar:[], reading:[], listening:[], assessments:[], practice:[] };
+  // `practice` arrived later than the other keys, so a pack cached before it
+  // existed would otherwise spread `undefined` and break the whole load.
+  for (const pack of packs) for (const key of Object.keys(merged)) merged[key].push(...(pack[key] || []));
   return { ...merged, index };
 }
 

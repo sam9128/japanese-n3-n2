@@ -1408,6 +1408,85 @@ function LibraryPagination({
   );
 }
 
+/**
+ * The 文字・語彙 and 文法 practice sets.
+ *
+ * A worksheet rather than the one-item-at-a-time layout reading and listening
+ * use: these questions are short and self-contained, so scrolling a month's set
+ * is faster than paging through it.
+ *
+ * Answers are deliberately not graded. Practice must not be a second route to
+ * unlocking new material — that is what the daily rounds are for — so nothing
+ * here touches cardProgress, and the answers live in page state only.
+ */
+function PracticePanel({ items, answers, onAnswer, settings }) {
+  if (!items.length) {
+    return <Empty text="這個月份尚無練習題，請切換到其他月份。" />;
+  }
+  const answered = items.filter((item) => answers[item.id] !== undefined).length;
+  const correct = items.filter(
+    (item) => answers[item.id] === item.answer,
+  ).length;
+  return (
+    <div className="practice-list">
+      <p className="lesson-list-head">
+        共 {items.length} 題 · 已作答 {answered} · 答對 {correct}
+        <span className="practice-note">（練習不計入學習進度）</span>
+      </p>
+      {items.map((item, index) => {
+        const chosen = answers[item.id];
+        return (
+          <article className="practice-item" key={item.id}>
+            <div className="question-meta">
+              <span>{item.section}</span>
+              <b>{item.type}</b>
+            </div>
+            <p className="exam-instruction">{item.instruction}</p>
+            <p className="exam-passage" lang="ja">
+              {item.passage}
+              <ExampleAudio
+                text={item.passage.replace(/[＿（）　]/g, "")}
+                settings={settings}
+              />
+            </p>
+            <h3>
+              {index + 1}. {item.prompt}
+            </h3>
+            {item.options.map((option, optionIndex) => {
+              const isChosen = chosen === optionIndex;
+              const isCorrect = item.answer === optionIndex;
+              const state =
+                chosen === undefined
+                  ? ""
+                  : isCorrect
+                    ? "correct"
+                    : isChosen
+                      ? "wrong"
+                      : "";
+              return (
+                <button
+                  key={option}
+                  className={state}
+                  disabled={chosen !== undefined}
+                  onClick={() => onAnswer(item.id, optionIndex)}
+                >
+                  {String.fromCharCode(65 + optionIndex)}. {option}
+                </button>
+              );
+            })}
+            {chosen !== undefined && (
+              <p className="explanation">
+                {chosen === item.answer ? "答對了。" : "再看一次句子。"}{" "}
+                {item.explanationZh}
+              </p>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function MediaView({
   data,
   activePeriod,
@@ -1422,8 +1501,21 @@ function MediaView({
   // That month's own material, not everything unlocked up to it. Cumulative
   // meant the list grew every month and the current month's items sat at the
   // bottom, so "switch month" barely changed what was on screen.
-  const list = data[type].filter((x) => x.unlockPeriod === activePeriod);
+  // 文字・語彙 and 文法 practice live in the same page because the exam has four
+  // sections and this page only ever covered two of them.
+  const practiceSection = { vocab: "文字・語彙", grammar: "文法" }[type];
+  const monthPractice = (data.practice || []).filter(
+    (x) => x.unlockPeriod === activePeriod,
+  );
+  const practiceItems = practiceSection
+    ? monthPractice.filter((x) => x.section === practiceSection)
+    : [];
+  const list = practiceSection
+    ? []
+    : data[type].filter((x) => x.unlockPeriod === activePeriod);
   const counts = {
+    vocab: monthPractice.filter((x) => x.section === "文字・語彙").length,
+    grammar: monthPractice.filter((x) => x.section === "文法").length,
     reading: data.reading.filter((x) => x.unlockPeriod === activePeriod).length,
     listening: data.listening.filter((x) => x.unlockPeriod === activePeriod)
       .length,
@@ -1479,23 +1571,78 @@ function MediaView({
   const listeningCount = data.listening.filter((x) =>
     isUnlocked(x, activePeriod),
   ).length;
-  // The header carries the month switcher, so it has to render even when the
-  // chosen month is empty — otherwise the learner lands on a dead end.
+  // Declared above the early returns: the section tabs live in the header, and
+  // the practice branch returns before this point, which left the tab handlers
+  // reaching a const that had not been initialised in that render.
+  const selectType = (nextType) =>
+    updatePage((current) => ({
+      ...current,
+      type: nextType,
+      selected: 0,
+      answer: null,
+      transcript: false,
+      replays: 0,
+      elapsed: 0,
+      startedAt: null,
+    }));
+
+  // The header carries the month switcher and the section tabs, so both have to
+  // render even when the chosen section is empty — otherwise the learner lands
+  // on a dead end with no way back.
+  const tabs = (
+    <div className="segmented four-up">
+      {[
+        ["vocab", "文字・語彙"],
+        ["grammar", "文法"],
+        ["reading", "閱讀"],
+        ["listening", "聽力"],
+      ].map(([key, label]) => (
+        <button
+          key={key}
+          className={type === key ? "active" : ""}
+          onClick={() => selectType(key)}
+        >
+          {label} {counts[key]}
+        </button>
+      ))}
+    </div>
+  );
   const header = (
     <>
       <PageTitle
-        eyebrow="READ · LISTEN"
-        title="閱讀聽力"
-        text="先作答，再看稿與解析；系統會記下重播與錯因。"
+        eyebrow="PRACTICE"
+        title="分科練習"
+        text="依日檢四個科目分開練習；文字・語彙與文法為隨堂練習，不計入學習進度。"
       />
       <PeriodPicker
         viewPeriod={activePeriod}
         setViewPeriod={setViewPeriod}
         unlockedThrough={unlockedThrough}
-        hint={`可練閱讀 ${readingCount} 篇 · 聽力 ${listeningCount} 篇`}
+        hint={`本月 文字・語彙 ${counts.vocab} · 文法 ${counts.grammar} · 閱讀 ${counts.reading} · 聽力 ${counts.listening}`}
       />
+      {tabs}
     </>
   );
+  if (practiceSection)
+    return (
+      <section>
+        {header}
+        <PracticePanel
+          items={practiceItems}
+          answers={pageState.practiceAnswers || {}}
+          settings={settings}
+          onAnswer={(id, choice) =>
+            updatePage((current) => ({
+              ...current,
+              practiceAnswers: {
+                ...(current.practiceAnswers || {}),
+                [id]: choice,
+              },
+            }))
+          }
+        />
+      </section>
+    );
   if (!item)
     return (
       <section>
@@ -1537,17 +1684,6 @@ function MediaView({
       elapsed: 0,
       startedAt: null,
     }));
-  const selectType = (nextType) =>
-    updatePage((current) => ({
-      ...current,
-      type: nextType,
-      selected: 0,
-      answer: null,
-      transcript: false,
-      replays: 0,
-      elapsed: 0,
-      startedAt: null,
-    }));
   const replay = (text) => {
     speakJapanese(text, settings);
     updatePage((current) => ({
@@ -1564,20 +1700,6 @@ function MediaView({
   return (
     <section>
       {header}
-      <div className="segmented">
-        <button
-          className={type === "reading" ? "active" : ""}
-          onClick={() => selectType("reading")}
-        >
-          閱讀 {counts.reading}
-        </button>
-        <button
-          className={type === "listening" ? "active" : ""}
-          onClick={() => selectType("listening")}
-        >
-          聽力 {counts.listening}
-        </button>
-      </div>
       <div className="media-layout">
         <aside className="lesson-list">
           <p className="lesson-list-head">

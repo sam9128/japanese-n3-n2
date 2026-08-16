@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-08-16T14:28:06.844Z",
+  "generatedAt": "2026-08-16T15:21:03.672Z",
   "contentVersion": "2026-08-jmdict-rebuild",
-  "contentHash": "e698f7d53eb088fd",
+  "contentHash": "d30c3888232d7e21",
   "reissuedIds": [
     "vocab-0005",
     "vocab-0007",
@@ -1338,6 +1338,7 @@
     "grammar": 240,
     "reading": 52,
     "listening": 124,
+    "practice": 432,
     "monthlyChecks": 12,
     "n3Mocks": 5,
     "n2Mocks": 2

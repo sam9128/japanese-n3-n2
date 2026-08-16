@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import {READING_FORMATS,LISTENING_FORMATS,readingFormatFor,listeningFormatFor,READING_TOTAL,LISTENING_TOTAL} from "./source/jlpt-formats.mjs";
+import {PRACTICE_PER_MONTH} from "./source/build-practice.mjs";
 const root=path.resolve(import.meta.dirname,"..","public","content");
 const index=JSON.parse(fs.readFileSync(path.join(root,"index.json"),"utf8"));
 const packs=index.periods.map(period=>JSON.parse(fs.readFileSync(path.join(root,"periods",`${period}.json`),"utf8")));
-const all={vocabulary:[],grammar:[],reading:[],listening:[],assessments:[]};
+const all={vocabulary:[],grammar:[],reading:[],listening:[],assessments:[],practice:[]};
 for(const pack of packs)for(const key of Object.keys(all))all[key].push(...pack[key]);
 const expected={vocabulary:4000,grammar:240,reading:52,listening:LISTENING_TOTAL};
 for(const [key,count] of Object.entries(expected))if(all[key].length!==count)throw new Error(`${key}: ${all[key].length} !== ${count}`);
@@ -212,4 +213,40 @@ for(const [i,schedule] of index.unlockSchedule.entries()){
   const grammar=all.grammar.filter(x=>allowed.has(x.unlockPeriod)).length;
   if(vocab!==schedule.vocabulary||grammar!==schedule.grammar)throw new Error(`unlock mismatch ${schedule.period}: ${vocab}/${grammar}`);
 }
+
+// The 文字・語彙 / 文法 practice sets on the 閱讀聽力 page. Built by the same
+// builders as the exam items, so they are checked for the same failure modes:
+// a cloze with no blank, a sentence that still shows the answer, a distractor
+// visible in the sentence, or a marked-word item with nothing marked.
+{
+  const practiceIds=new Set();
+  for(const item of all.practice){
+    if(practiceIds.has(item.id))throw new Error(`duplicate practice id: ${item.id}`);
+    practiceIds.add(item.id);
+    if(!["文字・語彙","文法"].includes(item.section))throw new Error(`unexpected practice section: ${item.id} ${item.section}`);
+    if(item.options?.length!==4||new Set(item.options).size!==4)throw new Error(`invalid practice options: ${item.id}`);
+    if(!Number.isInteger(item.answer)||item.answer<0||item.answer>3)throw new Error(`invalid practice answer: ${item.id}`);
+    if(!hasChinese(item.explanationZh))throw new Error(`missing Chinese practice explanation: ${item.id}`);
+    if(item.options.some(option=>!hasJapanese(option)||hasChineseMarker(option)))throw new Error(`non-Japanese practice option: ${item.id}`);
+    const answer=item.options[item.answer];
+    if(item.logic==="vocab-cloze"||item.logic==="grammar-cloze"){
+      if(!item.passage?.includes("（　）"))throw new Error(`practice cloze has no blank: ${item.id}`);
+      if(item.passage.includes(answer))throw new Error(`practice cloze gives away its answer: ${item.id} (${answer})`);
+      for(const option of item.options){
+        if(option!==answer&&item.passage.includes(option))throw new Error(`distractor visible in practice sentence: ${item.id} (${option})`);
+      }
+    }
+    if(item.logic==="kanji-reading"||item.logic==="orthography"){
+      if(!/＿.+＿/.test(item.passage||""))throw new Error(`no marked word in practice sentence: ${item.id}`);
+      if(item.logic==="orthography"&&item.passage.includes(answer))throw new Error(`practice 表記 already shows the kanji: ${item.id}`);
+    }
+  }
+  // Every month must actually have a set, or the tab opens empty.
+  for(const period of index.periods){
+    const n=all.practice.filter(item=>item.unlockPeriod===period).length;
+    if(n!==PRACTICE_PER_MONTH)throw new Error(`practice count for ${period}: ${n} !== ${PRACTICE_PER_MONTH}`);
+  }
+}
+
+
 console.log(JSON.stringify({ok:true,counts:index.counts,uniqueIds:ids.length,uniqueGrammar:new Set(all.grammar.map(x=>x.term)).size,chineseExplainedCards:all.vocabulary.length+all.grammar.length},null,2));

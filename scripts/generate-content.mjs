@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { grammarExamples } from "./source/grammar-examples.mjs";
 import { buildReading, buildListening } from "./source/build-media.mjs";
 import { readingFormatFor, listeningFormatFor, READING_TOTAL, LISTENING_TOTAL } from "./source/jlpt-formats.mjs";
+import { ITEM_BUILDERS, grammarClozeItem, hasOwnExample, patternCore, usableForGrammarCloze, usableForReading } from "./source/build-items.mjs";
+import { buildPractice, PRACTICE_PER_MONTH } from "./source/build-practice.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dryRun = process.argv.includes("--dry-run");
@@ -360,8 +362,6 @@ function takeUnused(items, used, seed, key = (item)=>item.id, label = "題庫") 
 // into chunks that are valid to reorder. Guessing at any of those produces items
 // with more than one defensible answer, which is worse than not having them.
 
-const SECTION_VOCAB = "文字・語彙";
-const SECTION_GRAMMAR = "文法";
 
 // How a paper is made up.
 //
@@ -430,21 +430,12 @@ function examPlan(kind, level, questionCount) {
   ];
 }
 
-// Underline substitute: the real paper underlines the target, which plain text
-// in the UI cannot do, so it is bracketed instead.
-const mark = (text) => `＿${text}＿`;
-
 function makeExamQuestions(id, level, period, questionCount, catalog, kind) {
   const maxPeriod = periods.indexOf(period);
   const vocabPool = orderedLevelPool(catalog.vocabulary,level,maxPeriod);
-  // Sentence-context items need the word to actually appear in its own example.
-  const inSentence = (item) => item.examples?.[0]?.ja?.includes(item.term);
-  const kanjiPool = vocabPool.filter((item) => /[㐀-鿿]/.test(item.term)&&item.reading&&item.reading!==item.term&&item.readingQuizEligible&&inSentence(item));
-  const clozePool = vocabPool.filter(inSentence);
-  const grammarPool = orderedLevelPool(catalog.grammar,level,maxPeriod);
-  // The pattern carries 〜 markers that the sentence does not, so match on the core.
-  const patternCore = (term) => term.replace(/[〜～]/g,"");
-  const grammarClozePool = grammarPool.filter((item)=>item.examples?.[0]?.ja?.includes(patternCore(item.term)));
+  const kanjiPool = vocabPool.filter(usableForReading);
+  const clozePool = vocabPool.filter(hasOwnExample);
+  const grammarClozePool = orderedLevelPool(catalog.grammar,level,maxPeriod).filter(usableForGrammarCloze);
   const readingPool = orderedLevelPool(catalog.reading,level,maxPeriod).flatMap((item)=>item.questions.map((question,questionIndex)=>({item,question,questionIndex,id:`${item.id}-q${questionIndex+1}`})));
   // 統合理解 carries two questions; taking only the first threw half the pool away.
   const listeningPool = orderedLevelPool(catalog.listening,level,maxPeriod).flatMap((item)=>item.questions.map((question,questionIndex)=>({item,question,questionIndex,id:`${item.id}-q${questionIndex+1}`})));
@@ -452,51 +443,25 @@ function makeExamQuestions(id, level, period, questionCount, catalog, kind) {
   const seedBase = [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const plan = examPlan(kind, level, questionCount);
 
-  // Distractors for 文脈規定 must not also fit the blank. Without semantic data
-  // the cheapest reliable proxy is the Chinese gloss: words whose glosses share
-  // no characters are very unlikely to be interchangeable in one sentence.
-  const glossChars = (item) => new Set((item.meaningZh||"").replace(/[；;，,（）()]/g,""));
-  const disjointGloss = (a, b) => {
-    const other = glossChars(b);
-    for (const char of glossChars(a)) if (other.has(char)) return false;
-    return true;
-  };
-
   return Array.from({length:questionCount}, (_, index) => {
     const seed = seedBase * 17 + index * 13;
     const qid = `${id}-q${index+1}`;
     const type = plan[index];
 
     // ---------------------------------------------------------- 文字・語彙
-    if (type === "kanji") {
-      // 漢字読み — the reading of an underlined word, read in a sentence.
-      const item=takeUnused(kanjiPool,used.vocabulary,seed,undefined,`${id} 漢字読み`);
-      const distractors=kanjiPool.filter((candidate)=>candidate.id!==item.id&&candidate.reading!==item.reading).slice(seed%Math.max(1,kanjiPool.length-3)).concat(kanjiPool).map((candidate)=>candidate.reading);
-      return { id:qid, section:SECTION_VOCAB, type:"漢字読み", instruction:"＿＿＿の言葉の読み方として最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replace(item.term,mark(item.term)), prompt:`${mark(item.term)}の読み方はどれですか。`, ...rotateOptions(item.reading,distractors,seed), explanationZh:`「${item.term}」讀作「${item.reading}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"kanji-reading" };
-    }
-    if (type === "orthography") {
-      // 表記 — the kanji for a word shown in kana, again inside its sentence.
-      const item=takeUnused(kanjiPool,used.vocabulary,seed,undefined,`${id} 表記`);
-      const distractors=kanjiPool.filter((candidate)=>candidate.id!==item.id&&candidate.reading!==item.reading).slice(seed%Math.max(1,kanjiPool.length-3)).concat(kanjiPool).map((candidate)=>candidate.term);
-      return { id:qid, section:SECTION_VOCAB, type:"表記", instruction:"＿＿＿の言葉を漢字で書くとき、最もよいものを一つ選びなさい。", passage:item.examples[0].ja.replaceAll(item.term,mark(item.reading)), prompt:`${mark(item.reading)}を漢字で書くとどれですか。`, ...rotateOptions(item.term,distractors,seed), explanationZh:`「${item.reading}」的正確表記是「${item.term}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"orthography" };
+    if (type === "kanji" || type === "orthography") {
+      const item=takeUnused(kanjiPool,used.vocabulary,seed,undefined,`${id} ${type==="kanji"?"漢字読み":"表記"}`);
+      return { id:qid, ...ITEM_BUILDERS[type](item,kanjiPool,seed) };
     }
     if (type === "vocab-cloze") {
-      // 文脈規定 — choose the word that belongs in the blank.
       const item=takeUnused(clozePool,used.vocabulary,seed,undefined,`${id} 文脈規定`);
-      const pool=clozePool.filter((candidate)=>candidate.id!==item.id&&candidate.term!==item.term&&disjointGloss(item,candidate)&&!item.examples[0].ja.includes(candidate.term));
-      const distractors=pool.slice(seed%Math.max(1,pool.length-3)).concat(pool).map((candidate)=>candidate.term);
-      return { id:qid, section:SECTION_VOCAB, type:"文脈規定", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replaceAll(item.term,"（　）"), prompt:"（　）に入る言葉はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」${item.reading&&item.reading!==item.term?`，讀作「${item.reading}」`:""}，意思是「${item.meaningZh}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"vocab-cloze" };
+      return { id:qid, ...ITEM_BUILDERS[type](item,clozePool,seed) };
     }
 
     // -------------------------------------------------------------- 文法
     if (type === "grammar-cloze") {
-      // 文法形式の判断 — choose the pattern that belongs in the blank. Distractors
-      // must express a different function, or more than one could be defensible.
-      const item=takeUnused(grammarClozePool,used.grammar,seed+(type===6?7:0),undefined,`${id} 文法形式`);
-      const correctFunction=grammarFunctionJa(item.term);
-      const pool=grammarClozePool.filter((candidate)=>candidate.id!==item.id&&grammarFunctionJa(candidate.term)!==correctFunction);
-      const distractors=pool.slice(seed%Math.max(1,pool.length-3)).concat(pool).map((candidate)=>candidate.term);
-      return { id:qid, section:SECTION_GRAMMAR, type:"文法形式の判断", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replaceAll(patternCore(item.term),"（　）"), prompt:"（　）に入る文法はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」，${item.meaningZh}此處用來「${correctFunction}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"grammar-cloze" };
+      const item=takeUnused(grammarClozePool,used.grammar,seed,undefined,`${id} 文法形式`);
+      return { id:qid, ...grammarClozeItem(item,grammarClozePool,seed,grammarFunctionJa) };
     }
 
     // ------------------------------------------------------- 読解・聴解
@@ -646,6 +611,10 @@ const reissuedIds = readSource("vocab-reissued-ids.json").ids;
 // learner's ratings on every future rebuild. This one has to change whenever the
 // lessons do, and nothing else — which a hand-edited string does not, as the
 // JLPT rebuild proved by shipping under the previous version's name.
+// The 文字・語彙 and 文法 practice sets for the 閱讀聽力 page, built from the same
+// item builders the exam uses.
+const practice = buildPractice(periods, vocabulary, grammar, grammarFunctionJa);
+
 const packPayloads = periods.map((period) => ({
   period,
   vocabulary: vocabulary.filter((x) => x.unlockPeriod === period),
@@ -653,12 +622,13 @@ const packPayloads = periods.map((period) => ({
   reading: reading.filter((x) => x.unlockPeriod === period),
   listening: listening.filter((x) => x.unlockPeriod === period),
   assessments: assessments.filter((x) => x.unlockPeriod === period),
+  practice: practice.filter((x) => x.unlockPeriod === period),
 }));
 const contentHash = createHash("sha256")
   .update(packPayloads.map((payload) => JSON.stringify(payload)).join("\n"))
   .digest("hex")
   .slice(0, 16);
-const index = { generatedAt:new Date().toISOString(), contentVersion:"2026-08-jmdict-rebuild", contentHash, reissuedIds, periods, counts:{vocabulary:vocabulary.length,grammar:grammar.length,reading:reading.length,listening:listening.length,monthlyChecks:12,n3Mocks:5,n2Mocks:2}, unlockSchedule:periods.map((period,i)=>({period,vocabulary:vocabCaps[i],grammar:grammarCaps[i]})), sources:[{name:"Language-Learning-decks",url:"https://github.com/vbvss199/Language-Learning-decks",license:"MIT / CC BY-SA 4.0 frequency data"},{name:"EDRDG/JMdict",url:"https://www.edrdg.org/",license:"EDRDG licence"},{name:"時雨之町",url:"https://www.sigure.tw/",use:"classification and grammar cross-check only; no copied explanations, examples, articles, or quizzes"},{name:"JLPT sample questions",url:"https://www.jlpt.jp/e/samples/sampleindex.html",use:"link only"}] };
+const index = { generatedAt:new Date().toISOString(), contentVersion:"2026-08-jmdict-rebuild", contentHash, reissuedIds, periods, counts:{vocabulary:vocabulary.length,grammar:grammar.length,reading:reading.length,listening:listening.length,practice:practice.length,monthlyChecks:12,n3Mocks:5,n2Mocks:2}, unlockSchedule:periods.map((period,i)=>({period,vocabulary:vocabCaps[i],grammar:grammarCaps[i]})), sources:[{name:"Language-Learning-decks",url:"https://github.com/vbvss199/Language-Learning-decks",license:"MIT / CC BY-SA 4.0 frequency data"},{name:"EDRDG/JMdict",url:"https://www.edrdg.org/",license:"EDRDG licence"},{name:"時雨之町",url:"https://www.sigure.tw/",use:"classification and grammar cross-check only; no copied explanations, examples, articles, or quizzes"},{name:"JLPT sample questions",url:"https://www.jlpt.jp/e/samples/sampleindex.html",use:"link only"}] };
 if (!dryRun) {
   fs.mkdirSync(outRoot,{recursive:true});
   // Written from the same payloads the hash was taken over, so the two can never

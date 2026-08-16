@@ -355,6 +355,55 @@ a {
   background: #f5ead6;
   color: #8a5f1c;
 }
+/* Four sections instead of two, so the tabs wrap on a phone rather than squeeze. */
+.segmented.four-up {
+  flex-wrap: wrap;
+}
+.segmented.four-up button {
+  flex: 1 1 auto;
+  min-width: 22%;
+}
+/* 文字・語彙 / 文法 practice: a worksheet, since the questions are short. */
+.practice-note {
+  margin-left: 8px;
+  color: #8a938b;
+}
+.practice-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 14px;
+  background: #fff;
+}
+.practice-item h3 {
+  font-size: 15px;
+  margin: 12px 0;
+}
+.practice-item > button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 11px 14px;
+  margin-bottom: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.practice-item > button:disabled {
+  cursor: default;
+}
+.practice-item > button.correct {
+  border-color: var(--green);
+  background: #e5ebe3;
+  color: var(--green);
+}
+.practice-item > button.wrong {
+  border-color: #c0796d;
+  background: #f7e9e6;
+  color: #8a3e35;
+}
 .question-number {
   display: inline-block;
   background: var(--green);
