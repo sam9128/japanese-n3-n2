@@ -34,6 +34,7 @@ jobs:
       - run: pnpm run validate:unlock-rules
       - run: pnpm run validate:monthly-report
       - run: pnpm run validate:sw-content
+      - run: pnpm run validate:study-rating
       - run: pnpm build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID || '440469318854-ulndijqb6n60omrihk6b6bh42uho40k1.apps.googleusercontent.com' }}

@@ -21,7 +21,13 @@ import { calculateDailyProgress } from "./dailyProgress";
 import { planToday, unlockedThrough as unlockedThroughFor } from "./unlockSchedule";
 import { buildMonthlyReport, reportablePeriods } from "./monthlyReport";
 import DriveSyncPanel from "./DriveSyncPanel";
-import { buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
+import { buildQuizQuestion, buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
+import {
+  MASTERY_STREAK,
+  markAlreadyKnown,
+  nextProgressFromAnswer,
+  roundCards,
+} from "./studyRating";
 import {
   DEFAULT_SCHEDULE_SETTINGS,
   normalizeScheduleSettings,
@@ -49,10 +55,7 @@ const STRONG_RATINGS = new Set(["good", "easy"]);
 const LIBRARY_PAGE_SIZES = [30, 60, 120];
 const DEFAULT_PAGE_STATES = {
   today: {
-    index: 0,
-    revealed: false,
     scrollY: 0,
-    seenByBatch: {},
     quiz: null,
     recentQuizRounds: [],
     reviewRound: 0,
@@ -238,12 +241,25 @@ function useToday() {
   return today;
 }
 
+/**
+ * One question of a study round.
+ *
+ * This replaced the flip card: daily study is answering, not revealing. The
+ * answer panel therefore has to carry everything the card's back used to —
+ * meaning, usage note, example, translation, audio — because this is now the
+ * only place the learner is taught the word. Showing just "correct / wrong"
+ * would quiz them on material they were never shown.
+ */
 function StudyQuizPanel({
   quiz,
   settings,
+  cardsById,
+  reviewMode = false,
+  outstanding = 0,
   onAnswer,
   onNext,
   onFinish,
+  onKnown = null,
 }) {
   const questions = quiz?.questions || [];
   const currentIndex = Math.min(quiz?.current || 0, questions.length - 1);
@@ -255,11 +271,14 @@ function StudyQuizPanel({
     .length;
   const finished = questions.length > 0 && answeredCount >= questions.length;
   if (!question) return null;
+  const card = cardsById?.get(question.itemId);
+  const streak = Number(answer?.streak) || 0;
   return (
     <div className="lesson-card study-quiz-card">
       <div className="lesson-top">
         <span>
-          3 題小測驗 · 第 {currentIndex + 1} / {questions.length} 題
+          {reviewMode ? "複習" : "本批練習"} · 第 {currentIndex + 1} /{" "}
+          {questions.length} 題
         </span>
         <button onClick={() => speakJapanese(question.audioText, settings)}>
           播放題目
@@ -305,17 +324,52 @@ function StudyQuizPanel({
             }`}
             role="status"
           >
-            <strong>{answer.correct ? "答對了" : "這題要再加強"}</strong>
-            <span>正確意思：{question.correctMeaning}</span>
+            <strong>
+              {answer.correct
+                ? reviewMode
+                  ? "答對了"
+                  : streak >= MASTERY_STREAK
+                    ? "答對了 · 這張達標"
+                    : "答對了 · 再答對一次就達標"
+                : "這題要再加強"}
+            </strong>
+            {/* The whole card, because this is where the word is taught now. */}
+            {card ? (
+              <div className="answer">
+                <strong>{card.meaningZh}</strong>
+                <span className="usage-note">{card.usageZh}</span>
+                <div className="example-line">
+                  <p>{card.examples?.[0]?.ja}</p>
+                  <ExampleAudio
+                    text={card.examples?.[0]?.ja}
+                    settings={settings}
+                  />
+                </div>
+                <ExampleTranslation example={card.examples?.[0]} />
+              </div>
+            ) : (
+              <span>正確意思：{question.correctMeaning}</span>
+            )}
+            {onKnown && answer.correct && (
+              <button
+                className="text-button already-known"
+                onClick={() => onKnown(question.itemId)}
+              >
+                很熟，別再問我
+              </button>
+            )}
           </div>
         )}
       </div>
       <footer className="study-quiz-footer">
         <span>
           已答 {answeredCount} · 正確 {correctCount} · 共 {questions.length}
+          {!reviewMode && outstanding > 0 ? ` · 本批還剩 ${outstanding} 張` : ""}
         </span>
         {finished ? (
-          <button onClick={onFinish}>回到卡片</button>
+          <button onClick={onFinish}>
+            {reviewMode ? "下一輪" : "完成這一輪"}
+          </button>
         ) : (
           <button disabled={!answer} onClick={onNext}>
             下一題
@@ -396,6 +450,65 @@ function useLearningStore() {
     setProgress((old) => ({ ...old, [item.id]: record }));
     setEvents((old) => [...old, event]);
   }
+  /**
+   * Answering a card during daily study.
+   *
+   * Unlike recordQuizAnswer, this also grades the card: the daily flow is the
+   * quiz now, so this is where `rating` comes from. It writes one study event,
+   * not one per phase, so the monthly report still counts one answer as one
+   * piece of work.
+   */
+  async function answerStudyCard(item, correct, detail = {}) {
+    const previous = progress[item.id] || {};
+    const now = new Date().toISOString();
+    const { streak, rating } = nextProgressFromAnswer(previous, correct);
+    const record = {
+      ...previous,
+      id: item.id,
+      streak,
+      rating,
+      attempts: (previous.attempts || 0) + 1,
+      quizAttempts: (previous.quizAttempts || 0) + 1,
+      quizCorrect: (previous.quizCorrect || 0) + (correct ? 1 : 0),
+      quizWrong: (previous.quizWrong || 0) + (correct ? 0 : 1),
+      lastQuizCorrect: correct,
+      lastQuizAt: now,
+      updatedAt: now,
+    };
+    const event = {
+      id: crypto.randomUUID(),
+      cardId: item.id,
+      category: item.category,
+      rating,
+      streak,
+      quizCorrect: correct,
+      occurredAt: now,
+      ...detail,
+    };
+    await Promise.all([put("cardProgress", record), put("studyEvents", event)]);
+    setProgress((old) => ({ ...old, [item.id]: record }));
+    setEvents((old) => [...old, event]);
+  }
+  // "很熟，別再問我" — skip a word the learner already knows without making them
+  // answer it twice.
+  async function markKnown(item) {
+    const previous = progress[item.id] || {};
+    const now = new Date().toISOString();
+    const { streak, rating } = markAlreadyKnown();
+    const record = { ...previous, id: item.id, streak, rating, updatedAt: now };
+    const event = {
+      id: crypto.randomUUID(),
+      cardId: item.id,
+      category: item.category,
+      rating,
+      streak,
+      skipped: true,
+      occurredAt: now,
+    };
+    await Promise.all([put("cardProgress", record), put("studyEvents", event)]);
+    setProgress((old) => ({ ...old, [item.id]: record }));
+    setEvents((old) => [...old, event]);
+  }
   async function saveResult(result) {
     await put("assessmentResults", result);
     setResults((old) => [...old.filter((x) => x.id !== result.id), result]);
@@ -407,6 +520,8 @@ function useLearningStore() {
     ready,
     rate,
     recordQuizAnswer,
+    answerStudyCard,
+    markKnown,
     saveResult,
     reload: () => location.reload(),
   };
@@ -718,10 +833,7 @@ function TodayView({
   const completedInBatch = cards.filter((item) =>
     STRONG_RATINGS.has(store.progress[item.id]?.rating),
   ).length;
-  const index = Number(pageState.index) || 0;
-  const revealed = Boolean(pageState.revealed);
   const [notice, setNotice] = useState("");
-  const card = cards[index % Math.max(1, cards.length)];
   // In review mode each finished round bumps the counter, which changes the key
   // and lets the quiz effect below start a fresh round — the endless loop that
   // runs until Monday raises the weekly cap.
@@ -731,8 +843,6 @@ function TodayView({
     : `${activePeriod}:${batchIndex}`;
   const activeQuiz =
     pageState.quiz?.batchKey === batchKey ? pageState.quiz : null;
-  const seenByBatch = pageState.seenByBatch || {};
-  const currentSeenIds = seenByBatch[batchKey] || [];
   const quizCandidates = useMemo(
     () => [...unlocked.v, ...unlocked.g],
     [unlocked.v, unlocked.g],
@@ -741,51 +851,35 @@ function TodayView({
     () => new Map(quizCandidates.map((item) => [item.id, item])),
     [quizCandidates],
   );
-  const learnedQuizPool = useMemo(() => {
-    const seenIds = new Set(currentSeenIds);
-    return quizCandidates.filter(
-      (item) => store.progress[item.id] || seenIds.has(item.id),
-    );
-  }, [quizCandidates, store.progress, currentSeenIds]);
+  // What review mode drills: anything already studied. It used to also include
+  // cards merely seen in this batch, which mattered when seeing a card was a
+  // separate step from answering it. Answering is the only step now, so having
+  // a progress record is the same thing as having met the card.
+  const learnedQuizPool = useMemo(
+    () => quizCandidates.filter((item) => store.progress[item.id]),
+    [quizCandidates, store.progress],
+  );
   const previousBatchKey = useRef(batchKey);
   useEffect(() => {
     if (previousBatchKey.current !== batchKey) {
       updatePage((current) => ({
         ...current,
-        index: 0,
-        revealed: false,
         quiz: null,
       }));
       previousBatchKey.current = batchKey;
     }
   }, [batchKey, updatePage]);
-  const markCardSeen = useCallback(
-    (itemId) => {
-      if (!itemId) return;
-      updatePage((current) => {
-        const nextSeenByBatch = { ...(current.seenByBatch || {}) };
-        const batchSeen = new Set(nextSeenByBatch[batchKey] || []);
-        if (batchSeen.has(itemId)) return current;
-        batchSeen.add(itemId);
-        nextSeenByBatch[batchKey] = [...batchSeen];
-        return { ...current, seenByBatch: nextSeenByBatch };
-      });
-    },
-    [batchKey, updatePage],
-  );
+  // The batch is the quiz now. A round asks every card in the batch that has not
+  // reached 記得 exactly once — which is what stops a card filling its two-correct
+  // streak twice in the same pass — and cards answered wrong simply reappear in
+  // the next round, so there is no separate re-queue to keep in step.
   useEffect(() => {
-    markCardSeen(card?.id);
-  }, [card?.id, markCardSeen]);
-  useEffect(() => {
-    if (!cards.length || activeQuiz) return;
-    const seenIds = new Set(currentSeenIds);
-    if (!cards.every((item) => seenIds.has(item.id))) return;
-    const questions = buildStudyQuiz({
-      pool: learnedQuizPool,
-      allCandidates: quizCandidates,
-      progress: store.progress,
-      recentQuizRounds: pageState.recentQuizRounds || [],
-    });
+    if (reviewMode || !cards.length || activeQuiz) return;
+    const outstanding = roundCards(cards, store.progress);
+    if (!outstanding.length) return;
+    const questions = outstanding
+      .map((item) => buildQuizQuestion(item, quizCandidates))
+      .filter((question) => question.options.length >= 2);
     if (!questions.length) return;
     updatePage((current) => {
       if (current.quiz?.batchKey === batchKey) return current;
@@ -805,10 +899,8 @@ function TodayView({
     activeQuiz,
     batchKey,
     cards,
-    currentSeenIds,
-    learnedQuizPool,
-    pageState.recentQuizRounds,
     quizCandidates,
+    reviewMode,
     store.progress,
     updatePage,
   ]);
@@ -855,6 +947,12 @@ function TodayView({
       if (!question || quiz.answers?.[currentIndex]) return;
       const correct = selectedIndex === question.correctIndex;
       const answeredAt = new Date().toISOString();
+      // The same pure rule the store is about to apply, so the panel can tell
+      // the learner whether this answer finished the card or got it halfway.
+      const { streak: resultStreak } = nextProgressFromAnswer(
+        store.progress[question.itemId],
+        correct,
+      );
       updatePage((current) => {
         if (current.quiz?.id !== quiz.id) return current;
         return {
@@ -863,22 +961,36 @@ function TodayView({
             ...current.quiz,
             answers: {
               ...(current.quiz.answers || {}),
-              [currentIndex]: { selectedIndex, correct, answeredAt },
+              [currentIndex]: { selectedIndex, correct, answeredAt, streak: resultStreak },
             },
           },
         };
       });
       const item = quizItemsById.get(question.itemId);
       if (item) {
-        await store.recordQuizAnswer(item, correct, {
+        // Daily study grades the card — this is where `rating` now comes from.
+        // Review mode is drilling material already mastered, so it only records
+        // the attempt and must not be able to knock a card back down.
+        const record = reviewMode ? store.recordQuizAnswer : store.answerStudyCard;
+        await record(item, correct, {
           selectedOption: question.options[selectedIndex],
           correctOption: question.correctMeaning,
           quizRoundId: quiz.id,
           quizQuestion: currentIndex + 1,
+          dailyBatch: reviewMode ? undefined : batchIndex + 1,
+          unlockPeriod: activePeriod,
         });
       }
     },
-    [pageState.quiz, quizItemsById, store, updatePage],
+    [
+      activePeriod,
+      batchIndex,
+      pageState.quiz,
+      quizItemsById,
+      reviewMode,
+      store,
+      updatePage,
+    ],
   );
   const nextQuizQuestion = useCallback(() => {
     updatePage((current) => {
@@ -896,13 +1008,11 @@ function TodayView({
   const finishQuiz = useCallback(() => {
     updatePage((current) => {
       const itemIds = current.quiz?.questions?.map((question) => question.itemId);
-      const nextSeenByBatch = { ...(current.seenByBatch || {}) };
-      nextSeenByBatch[batchKey] = [];
       return {
         ...current,
+        // Clearing the round lets the effect build the next one from whatever is
+        // still outstanding — which is how a card answered wrong comes back.
         quiz: null,
-        revealed: false,
-        seenByBatch: nextSeenByBatch,
         // Bumping the round is what makes review mode loop: the key changes, so
         // the effect above immediately builds the next set of questions.
         reviewRound: reviewMode
@@ -915,39 +1025,25 @@ function TodayView({
       };
     });
   }, [batchKey, reviewMode, updatePage]);
-  async function rate(value) {
-    const willAdvance =
-      STRONG_RATINGS.has(value) &&
-      cards.every(
-        (item) =>
-          item.id === card.id ||
-          STRONG_RATINGS.has(store.progress[item.id]?.rating),
-      );
-    await store.rate(card, value, {
-      dailyBatch: batchIndex + 1,
-      unlockPeriod: activePeriod,
-    });
-    if (willAdvance) {
-      updatePage((current) => ({ ...current, index: 0, revealed: false }));
-      const hasNextBatch = Boolean(batches[batchIndex + 1]?.length);
-      const withinWeeklyCap = batchIndex + 1 < plan.allowedBatches;
-      setNotice(
-        hasNextBatch && withinWeeklyCap
-          ? `本批次全部達到「記得」以上，已自動開放第 ${batchIndex + 2} 批新內容。`
-          : hasNextBatch
-            ? "本批完成，但已達本週開放上限；先進入複習模式，下週一自動開放新進度。"
-            : "目前開放的教材已全部完成！",
-      );
-    } else {
-      setNotice("");
-      updatePage((current) => ({
-        ...current,
-        revealed: false,
-        index: ((Number(current.index) || 0) + 1) % cards.length,
-      }));
-    }
-  }
-  if (!card) {
+  // The unlock notice used to be raised by the rating buttons. Answering is what
+  // masters a card now, so it is derived from the batch emptying instead.
+  const batchDone = cards.length > 0 && !roundCards(cards, store.progress).length;
+  const announcedBatch = useRef(null);
+  useEffect(() => {
+    if (!batchDone) return;
+    if (announcedBatch.current === batchKey) return;
+    announcedBatch.current = batchKey;
+    const hasNextBatch = Boolean(batches[batchIndex + 1]?.length);
+    const withinWeeklyCap = batchIndex + 1 < plan.allowedBatches;
+    setNotice(
+      hasNextBatch && withinWeeklyCap
+        ? `本批全部答對兩次，已自動開放第 ${batchIndex + 2} 批新內容。`
+        : hasNextBatch
+          ? "本批完成，但已達本週開放上限；先進入複習模式，下週一自動開放新進度。"
+          : "目前開放的教材已全部完成！",
+    );
+  }, [batchDone, batchKey, batchIndex, batches, plan.allowedBatches]);
+  if (!cards.length) {
     const nextUnlock = plan.nextUnlockAt;
     const nextUnlockText = `${nextUnlock.getMonth() + 1} 月 ${nextUnlock.getDate()} 日（週一）`;
     return (
@@ -984,6 +1080,8 @@ function TodayView({
             <StudyQuizPanel
               quiz={activeQuiz}
               settings={settings}
+              cardsById={quizItemsById}
+              reviewMode
               onAnswer={answerQuiz}
               onNext={nextQuizQuestion}
               onFinish={finishQuiz}
@@ -1026,80 +1124,30 @@ function TodayView({
           <StudyQuizPanel
             quiz={activeQuiz}
             settings={settings}
+            cardsById={quizItemsById}
+            reviewMode={reviewMode}
+            outstanding={reviewMode ? 0 : roundCards(cards, store.progress).length}
             onAnswer={answerQuiz}
             onNext={nextQuizQuestion}
             onFinish={finishQuiz}
+            onKnown={
+              reviewMode
+                ? null
+                : (itemId) => {
+                    const item = quizItemsById.get(itemId);
+                    if (item) void store.markKnown(item);
+                  }
+            }
           />
         ) : (
-          <div className="lesson-card">
-          <div className="lesson-top">
-            <span>
-              {card.level} · {card.category === "vocab" ? "單字" : "文法"}
-            </span>
-            <button onClick={() => speakJapanese(card.audioText, settings)}>
-              ▶ {card.category === "grammar" ? "播放文法句型" : "播放單字"}
-            </button>
-          </div>
-          <div
-            className={`card-main${revealed ? " is-revealed" : ""}`}
-            onClick={() =>
-              updatePage((current) => ({ ...current, revealed: true }))
-            }
-          >
-            <h2>{card.term}</h2>
-            <p className="reading">{card.reading}</p>
-            {revealed ? (
-              <div className="answer">
-                <strong>{card.meaningZh}</strong>
-                <span className="usage-note">{card.usageZh}</span>
-                <div className="example-line">
-                  <p>{card.examples?.[0]?.ja}</p>
-                  <ExampleAudio
-                    text={card.examples?.[0]?.ja}
-                    settings={settings}
-                  />
-                </div>
-                <ExampleTranslation example={card.examples?.[0]} />
-              </div>
-            ) : (
-              <button className="reveal">翻卡看答案</button>
-            )}
-          </div>
-          <div className="rating-row">
-            <button onClick={() => rate("again")}>再一次</button>
-            <button onClick={() => rate("hard")}>有點難</button>
-            <button onClick={() => rate("good")}>記得</button>
-            <button onClick={() => rate("easy")}>很熟</button>
-          </div>
-          <footer>
-            <button
-              onClick={() =>
-                updatePage((current) => ({
-                  ...current,
-                  index:
-                    ((Number(current.index) || 0) - 1 + cards.length) %
-                    cards.length,
-                  revealed: false,
-                }))
-              }
-            >
-              ← 上一張
-            </button>
-            <span>
-              {index + 1} / {cards.length}
-            </span>
-            <button
-              onClick={() =>
-                updatePage((current) => ({
-                  ...current,
-                  index: ((Number(current.index) || 0) + 1) % cards.length,
-                  revealed: false,
-                }))
-              }
-            >
-              下一張 →
-            </button>
-          </footer>
+          <div className="lesson-card batch-done">
+            <div className="lesson-top">
+              <span>本批完成</span>
+            </div>
+            <div className="batch-done-main">
+              <strong>這一批都答對兩次了</strong>
+              <p>正在開放下一批…</p>
+            </div>
           </div>
         )}
         <MediaShortcuts goMedia={goMedia} unlocked={unlocked}>
