@@ -346,44 +346,98 @@ function takeUnused(items, used, seed, key = (item)=>item.id, label = "題庫") 
   throw new Error(`${label}不足，無法產生不重複題目（可用 ${items.length}，已使用 ${used.size}）`);
 }
 
+// Exam items, shaped like the 大問 of the real paper.
+//
+// 読解 and 聴解 already came from JLPT-shaped source material. 文字・語彙 and 文法
+// did not: 漢字読み asked "「違う」の読み方はどれですか" with no sentence, which the
+// real exam never does, and the 文法 item asked what a pattern "means" and offered
+// abstract function labels — a question about grammar rather than a use of it.
+//
+// The four types below are the ones this content can support honestly. Three
+// more real 大問 are deliberately absent because building them from what we have
+// would mean inventing data: 言い換え類義 needs vetted synonyms, 用法 needs
+// sentences that use a word *incorrectly*, and 文の組み立て needs sentences split
+// into chunks that are valid to reorder. Guessing at any of those produces items
+// with more than one defensible answer, which is worse than not having them.
+
+const SECTION_VOCAB = "文字・語彙";
+const SECTION_GRAMMAR = "文法";
+
+// Underline substitute: the real paper underlines the target, which plain text
+// in the UI cannot do, so it is bracketed instead.
+const mark = (text) => `＿${text}＿`;
+
 function makeExamQuestions(id, level, period, questionCount, catalog) {
   const maxPeriod = periods.indexOf(period);
-  const kanjiPool = orderedLevelPool(catalog.vocabulary,level,maxPeriod).filter((item) => /[\u3400-\u9fff]/.test(item.term)&&item.reading&&item.reading!==item.term&&item.readingQuizEligible);
+  const vocabPool = orderedLevelPool(catalog.vocabulary,level,maxPeriod);
+  // Sentence-context items need the word to actually appear in its own example.
+  const inSentence = (item) => item.examples?.[0]?.ja?.includes(item.term);
+  const kanjiPool = vocabPool.filter((item) => /[㐀-鿿]/.test(item.term)&&item.reading&&item.reading!==item.term&&item.readingQuizEligible&&inSentence(item));
+  const clozePool = vocabPool.filter(inSentence);
   const grammarPool = orderedLevelPool(catalog.grammar,level,maxPeriod);
+  // The pattern carries 〜 markers that the sentence does not, so match on the core.
+  const patternCore = (term) => term.replace(/[〜～]/g,"");
+  const grammarClozePool = grammarPool.filter((item)=>item.examples?.[0]?.ja?.includes(patternCore(item.term)));
   const readingPool = orderedLevelPool(catalog.reading,level,maxPeriod).flatMap((item)=>item.questions.map((question,questionIndex)=>({item,question,questionIndex,id:`${item.id}-q${questionIndex+1}`})));
   // 統合理解 carries two questions; taking only the first threw half the pool away.
   const listeningPool = orderedLevelPool(catalog.listening,level,maxPeriod).flatMap((item)=>item.questions.map((question,questionIndex)=>({item,question,questionIndex,id:`${item.id}-q${questionIndex+1}`})));
   const used=assessmentUsage;
   const seedBase = [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+  // Distractors for 文脈規定 must not also fit the blank. Without semantic data
+  // the cheapest reliable proxy is the Chinese gloss: words whose glosses share
+  // no characters are very unlikely to be interchangeable in one sentence.
+  const glossChars = (item) => new Set((item.meaningZh||"").replace(/[；;，,（）()]/g,""));
+  const disjointGloss = (a, b) => {
+    const other = glossChars(b);
+    for (const char of glossChars(a)) if (other.has(char)) return false;
+    return true;
+  };
+
   return Array.from({length:questionCount}, (_, index) => {
     const seed = seedBase * 17 + index * 13;
-    const type = index % 6;
+    const qid = `${id}-q${index+1}`;
+    const type = index % 7;
+
+    // ---------------------------------------------------------- 文字・語彙
     if (type === 0) {
+      // 漢字読み — the reading of an underlined word, read in a sentence.
       const item=takeUnused(kanjiPool,used.vocabulary,seed,undefined,`${id} 漢字読み`);
       const distractors=kanjiPool.filter((candidate)=>candidate.id!==item.id&&candidate.reading!==item.reading).slice(seed%Math.max(1,kanjiPool.length-3)).concat(kanjiPool).map((candidate)=>candidate.reading);
-      return { id:`${id}-q${index+1}`, section:"言語知識", type:"漢字読み", instruction:"「　」の言葉の読み方として最もよいものを一つ選びなさい。", prompt:`「${item.term}」の読み方はどれですか。`, ...rotateOptions(item.reading,distractors,seed), explanationZh:`「${item.term}」讀作「${item.reading}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"kanji-reading" };
+      return { id:qid, section:SECTION_VOCAB, type:"漢字読み", instruction:"＿＿＿の言葉の読み方として最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replace(item.term,mark(item.term)), prompt:`${mark(item.term)}の読み方はどれですか。`, ...rotateOptions(item.reading,distractors,seed), explanationZh:`「${item.term}」讀作「${item.reading}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"kanji-reading" };
     }
     if (type === 1) {
+      // 表記 — the kanji for a word shown in kana, again inside its sentence.
       const item=takeUnused(kanjiPool,used.vocabulary,seed,undefined,`${id} 表記`);
       const distractors=kanjiPool.filter((candidate)=>candidate.id!==item.id&&candidate.reading!==item.reading).slice(seed%Math.max(1,kanjiPool.length-3)).concat(kanjiPool).map((candidate)=>candidate.term);
-      return { id:`${id}-q${index+1}`, section:"言語知識", type:"表記", instruction:"ひらがなで示した言葉の表記として最もよいものを一つ選びなさい。", prompt:`「${item.reading}」と読む言葉はどれですか。`, ...rotateOptions(item.term,distractors,seed), explanationZh:`「${item.reading}」的正確表記是「${item.term}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"orthography" };
+      return { id:qid, section:SECTION_VOCAB, type:"表記", instruction:"＿＿＿の言葉を漢字で書くとき、最もよいものを一つ選びなさい。", passage:item.examples[0].ja.replace(item.term,mark(item.reading)), prompt:`${mark(item.reading)}を漢字で書くとどれですか。`, ...rotateOptions(item.term,distractors,seed), explanationZh:`「${item.reading}」的正確表記是「${item.term}」，中文意思是「${item.meaningZh}」。`, sourceCardId:item.id, logic:"orthography" };
     }
     if (type === 2) {
-      const item=takeUnused(grammarPool,used.grammar,seed,undefined,`${id} 文法`);
-      const correct=grammarFunctionJa(item.term);
-      return { id:`${id}-q${index+1}`, section:"文法", type:"文法形式", instruction:"次の文で使われている文法の働きとして最もよいものを一つ選びなさい。", passage:item.examples[0].ja, prompt:`「${item.term}」は、この文でどのような意味を表していますか。`, ...rotateOptions(correct,grammarFunctions.filter((value)=>value!==correct).slice(seed%10).concat(grammarFunctions),seed), explanationZh:`本題句型是「${item.term}」，在例句中用來表示「${correct}」。${item.meaningZh} 例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"grammar-function" };
+      // 文脈規定 — choose the word that belongs in the blank.
+      const item=takeUnused(clozePool,used.vocabulary,seed,undefined,`${id} 文脈規定`);
+      const pool=clozePool.filter((candidate)=>candidate.id!==item.id&&candidate.term!==item.term&&disjointGloss(item,candidate)&&!item.examples[0].ja.includes(candidate.term));
+      const distractors=pool.slice(seed%Math.max(1,pool.length-3)).concat(pool).map((candidate)=>candidate.term);
+      return { id:qid, section:SECTION_VOCAB, type:"文脈規定", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replace(item.term,"（　）"), prompt:"（　）に入る言葉はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」${item.reading&&item.reading!==item.term?`，讀作「${item.reading}」`:""}，意思是「${item.meaningZh}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"vocab-cloze" };
     }
-    if (type === 3) {
-      const entry=takeUnused(readingPool,used.reading,seed,undefined,`${id} 読解`);
-      return { id:`${id}-q${index+1}`, section:"読解", type:entry.question.jlptType, instruction:"次の文章を読んで、質問に答えなさい。", passage:entry.item.content, prompt:entry.question.prompt, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"reading-source" };
+
+    // -------------------------------------------------------------- 文法
+    if (type === 3 || type === 6) {
+      // 文法形式の判断 — choose the pattern that belongs in the blank. Distractors
+      // must express a different function, or more than one could be defensible.
+      const item=takeUnused(grammarClozePool,used.grammar,seed+(type===6?7:0),undefined,`${id} 文法形式`);
+      const correctFunction=grammarFunctionJa(item.term);
+      const pool=grammarClozePool.filter((candidate)=>candidate.id!==item.id&&grammarFunctionJa(candidate.term)!==correctFunction);
+      const distractors=pool.slice(seed%Math.max(1,pool.length-3)).concat(pool).map((candidate)=>candidate.term);
+      return { id:qid, section:SECTION_GRAMMAR, type:"文法形式の判断", instruction:"（　）に入れるのに最もよいものを、一つ選びなさい。", passage:item.examples[0].ja.replace(patternCore(item.term),"（　）"), prompt:"（　）に入る文法はどれですか。", ...rotateOptions(item.term,distractors,seed), explanationZh:`空格處應填「${item.term}」，${item.meaningZh}此處用來「${correctFunction}」。例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"grammar-cloze" };
     }
+
+    // ------------------------------------------------------- 読解・聴解
     if (type === 4) {
-      const entry=takeUnused(listeningPool,used.listening,seed,undefined,`${id} 聴解`);
-      return { id:`${id}-q${index+1}`, section:"聴解", type:entry.question.jlptType, instruction:"音声を聞いて、質問に答えなさい。", prompt:entry.question.prompt, audioText:entry.item.audioText, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"listening-source" };
+      const entry=takeUnused(readingPool,used.reading,seed,undefined,`${id} 読解`);
+      return { id:qid, section:"読解", type:entry.question.jlptType, instruction:"次の文章を読んで、質問に答えなさい。", passage:entry.item.content, prompt:entry.question.prompt, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"reading-source" };
     }
-    const item=takeUnused(grammarPool,used.grammar,seed,undefined,`${id} 文法`);
-    const correct=grammarFunctionJa(item.term);
-    return { id:`${id}-q${index+1}`, section:"文法", type:"文法形式", instruction:"次の文で使われている文法の働きとして最もよいものを一つ選びなさい。", passage:item.examples[0].ja, prompt:`「${item.term}」は、この文でどのような意味を表していますか。`, ...rotateOptions(correct,grammarFunctions.filter((value)=>value!==correct).slice((seed+3)%10).concat(grammarFunctions),seed), explanationZh:`本題句型是「${item.term}」，在例句中用來表示「${correct}」。${item.meaningZh} 例句：${item.examples[0].ja}`, sourceCardId:item.id, logic:"grammar-function" };
+    const entry=takeUnused(listeningPool,used.listening,seed,undefined,`${id} 聴解`);
+    return { id:qid, section:"聴解", type:entry.question.jlptType, instruction:"音声を聞いて、質問に答えなさい。", prompt:entry.question.prompt, audioText:entry.item.audioText, options:entry.question.options, answer:entry.question.answer, explanationZh:entry.question.explanation, sourceQuestionId:entry.question.id, logic:"listening-source" };
   });
 }
 
@@ -467,7 +521,7 @@ function auditGeneratedQuestions() {
   const usedSources=new Set();
   // 読解 and 聴解 questions now carry the source item's real 大問 name, so the
   // check is that every section is represented rather than one fixed label.
-  const requiredSections=["言語知識","文法","読解","聴解"];
+  const requiredSections=["文字・語彙","文法","読解","聴解"];
   let examQuestionCount=0;
   for(const assessment of assessments){
     assert(assessment.questions.length===assessment.questionCount,`${assessment.id} 題數不符`);

@@ -119,7 +119,26 @@ for(const assessment of all.assessments){
   if(assessment.questions?.length!==assessment.questionCount)throw new Error(`assessment question count mismatch: ${assessment.id}`);
   // 読解 and 聴解 questions carry the source item's own 大問 name now, so an exam is
   // checked for section coverage rather than one fixed label per section.
-  for(const section of ["言語知識","文法","読解","聴解"])if(!assessment.questions.some(question=>question.section===section))throw new Error(`assessment section missing (${section}): ${assessment.id}`);
+  for(const section of ["文字・語彙","文法","読解","聴解"])if(!assessment.questions.some(question=>question.section===section))throw new Error(`assessment section missing (${section}): ${assessment.id}`);
+  // 文字・語彙 and 文法 items are built by blanking or marking a word inside its own
+  // example sentence. That construction has two ways to go wrong silently: the
+  // blank fails to appear (so nothing is being asked), or the sentence still
+  // contains the answer (so it can be read straight off the page). A distractor
+  // appearing in the sentence is the same defect from the other side.
+  for(const question of assessment.questions){
+    const answer=question.options[question.answer];
+    if(question.logic==="vocab-cloze"||question.logic==="grammar-cloze"){
+      if(!question.passage?.includes("（　）"))throw new Error(`cloze has no blank: ${question.id}`);
+      if(question.passage.includes(answer))throw new Error(`cloze gives away its answer: ${question.id} (${answer})`);
+      for(const option of question.options){
+        if(option!==answer&&question.passage.includes(option))throw new Error(`distractor appears in the sentence: ${question.id} (${option})`);
+      }
+    }
+    if(question.logic==="kanji-reading"||question.logic==="orthography"){
+      if(!/＿.+＿/.test(question.passage||""))throw new Error(`no marked word in sentence: ${question.id}`);
+      if(question.logic==="orthography"&&question.passage.includes(answer))throw new Error(`表記 sentence already shows the kanji: ${question.id} (${answer})`);
+    }
+  }
   for(const question of assessment.questions){
     examQuestionCount+=1;
     if(examIds.has(question.id))throw new Error(`duplicate exam question ID: ${question.id}`);examIds.add(question.id);
