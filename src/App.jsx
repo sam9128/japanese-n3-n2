@@ -1025,24 +1025,29 @@ function TodayView({
       };
     });
   }, [batchKey, reviewMode, updatePage]);
-  // The unlock notice used to be raised by the rating buttons. Answering is what
-  // masters a card now, so it is derived from the batch emptying instead.
-  const batchDone = cards.length > 0 && !roundCards(cards, store.progress).length;
-  const announcedBatch = useRef(null);
+  // The unlock notice used to be raised by the rating buttons. Answering masters
+  // a card now, so it is raised by the batch pointer moving on.
+  //
+  // It cannot be derived from "the current batch has nothing outstanding":
+  // mastering the last card advances `batchIndex` in the same render, so `cards`
+  // is already the next batch by the time anything could look at it.
+  const seenBatchIndex = useRef(batchIndex);
   useEffect(() => {
-    if (!batchDone) return;
-    if (announcedBatch.current === batchKey) return;
-    announcedBatch.current = batchKey;
-    const hasNextBatch = Boolean(batches[batchIndex + 1]?.length);
-    const withinWeeklyCap = batchIndex + 1 < plan.allowedBatches;
+    if (batchIndex <= seenBatchIndex.current) {
+      seenBatchIndex.current = batchIndex;
+      return;
+    }
+    seenBatchIndex.current = batchIndex;
+    const hasNextBatch = Boolean(batches[batchIndex]?.length);
+    const withinWeeklyCap = batchIndex < plan.allowedBatches;
     setNotice(
       hasNextBatch && withinWeeklyCap
-        ? `本批全部答對兩次，已自動開放第 ${batchIndex + 2} 批新內容。`
+        ? `上一批全部答對兩次，已自動開放第 ${batchIndex + 1} 批新內容。`
         : hasNextBatch
           ? "本批完成，但已達本週開放上限；先進入複習模式，下週一自動開放新進度。"
           : "目前開放的教材已全部完成！",
     );
-  }, [batchDone, batchKey, batchIndex, batches, plan.allowedBatches]);
+  }, [batchIndex, batches, plan.allowedBatches]);
   if (!cards.length) {
     const nextUnlock = plan.nextUnlockAt;
     const nextUnlockText = `${nextUnlock.getMonth() + 1} 月 ${nextUnlock.getDate()} 日（週一）`;
