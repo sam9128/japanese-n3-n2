@@ -1133,8 +1133,7 @@ a {
   font-size: 11px;
   line-height: 1.7;
 }
-.reading-copy textarea,
-.report-card textarea {
+.reading-copy textarea {
   width: 100%;
   min-height: 90px;
   border: 1px solid var(--line);
@@ -1508,15 +1507,6 @@ a {
   display: block;
   height: 100%;
   background: var(--green);
-}
-.report-card label {
-  display: block;
-  font-size: 12px;
-  margin: 20px 0;
-}
-.report-card textarea {
-  display: block;
-  margin-top: 7px;
 }
 .settings-grid {
   display: grid;
@@ -2584,13 +2574,12 @@ body {
   gap: 16px;
   flex-wrap: wrap;
 }
-/* Written as `label.report-period`, not `.report-period`, on purpose: the
-   generic `.report-card label` rule further up also matches this element and,
-   being class-plus-type, outranks a bare class. It won — so the picker laid out
-   as inline text with the select sitting *after* the words 報告月份 rather than
-   under them, and `width: 100%` then measured from that indented start and ran
-   off the right edge of the phone. Matching its specificity is the fix; raising
-   this one above it would only move the problem to the next generic rule. */
+/* Still written as `label.report-period` rather than `.report-period`: a bare
+   class is outranked by any `.some-card label` rule, and that is exactly how
+   this picker once ended up laid out as inline text with the select running off
+   the right edge of the phone. The rule that beat it has since been deleted
+   along with the 老師回饋 field, but the guard costs nothing and the failure it
+   prevents is silent. */
 label.report-period {
   display: flex;
   flex-direction: column;

@@ -87,7 +87,7 @@ const DEFAULT_PAGE_STATES = {
     review: null,
     scrollY: 0,
   },
-  progress: { feedback: "", scrollY: 0, reportPeriod: null },
+  progress: { scrollY: 0, reportPeriod: null },
   settings: { scrollY: 0 },
 };
 
@@ -2745,19 +2745,6 @@ function ProgressView({
             這是{formatPeriod(selected)}的封存月報；每日進度只適用於本月，因此不列在這裡。
           </p>
         )}
-        <label>
-          老師回饋
-          <textarea
-            value={pageState.feedback || ""}
-            onChange={(event) =>
-              updatePage((current) => ({
-                ...current,
-                feedback: event.target.value,
-              }))
-            }
-            placeholder="列印後可書寫，或先在此輸入回饋…"
-          />
-        </label>
         <div>
           <button className="primary" onClick={exportCsv}>
             匯出 CSV
