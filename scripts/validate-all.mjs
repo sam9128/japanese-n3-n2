@@ -15,6 +15,7 @@ const scripts = [
   "validate-monthly-report.mjs",
   "validate-sw-content.mjs",
   "validate-study-rating.mjs",
+  "validate-study-balance.mjs",
 ];
 
 const here = import.meta.dirname;

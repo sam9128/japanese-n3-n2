@@ -19,6 +19,7 @@ import {
 import { getJapaneseVoices, speakJapanese, stopSpeech } from "./speech";
 import { calculateDailyProgress } from "./dailyProgress";
 import { planToday, unlockedThrough as unlockedThroughFor } from "./unlockSchedule";
+import { studyBalance } from "./studyBalance";
 import { buildMonthlyReport, reportablePeriods } from "./monthlyReport";
 import DriveSyncPanel from "./DriveSyncPanel";
 import { buildQuizQuestion, buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
@@ -813,6 +814,29 @@ function PeriodPicker({ viewPeriod, setViewPeriod, unlockedThrough, hint }) {
   );
 }
 
+// Where to send the surplus. Used twice: by the ahead-of-pace nudge while cards
+// are still open, and by the month-complete screen once they are not.
+//
+// It leads with what each section still owes rather than with a time estimate,
+// because that number is the whole argument — "還差 7 題" is a reason to go, and
+// "06 分" is not.
+function MediaJump({ balance, goMedia }) {
+  const line = (owed) =>
+    owed > 0 ? `本月還差 ${owed} 題` : "本月已達標，可再練保持手感";
+  return (
+    <div className="media-jump">
+      <button onClick={() => goMedia("reading")}>
+        <strong>去做閱讀</strong>
+        <small>{line(balance.reading)}</small>
+      </button>
+      <button onClick={() => goMedia("listening")}>
+        <strong>去做聽力</strong>
+        <small>{line(balance.listening)}</small>
+      </button>
+    </div>
+  );
+}
+
 function MediaShortcuts({ goMedia, unlocked, children }) {
   return (
     <aside className="today-side">
@@ -869,6 +893,9 @@ function TodayView({
     [unlocked.v, unlocked.g, store.progress, today],
   );
   const { batches, batchIndex, cards, reviewMode, reviewReason } = plan;
+  // Read the pace per half rather than as one total: this page only teaches 單字
+  // and 文法, so a surplus here is spendable only somewhere else.
+  const balance = useMemo(() => studyBalance(dailyPace), [dailyPace]);
   const completedInBatch = cards.filter((item) =>
     STRONG_RATINGS.has(store.progress[item.id]?.rating),
   ).length;
@@ -1084,41 +1111,78 @@ function TodayView({
         ? `上一批全部答對兩次，已自動開放第 ${batchIndex + 1} 批新內容。`
         : hasNextBatch
           ? "本批完成，但已達本週開放上限；先進入複習模式，下週一自動開放新進度。"
-          : "目前開放的教材已全部完成！",
+          : "本月單字與文法進度完成，去學學閱讀聽力吧！",
     );
   }, [batchIndex, batches, plan.allowedBatches]);
   if (!cards.length) {
     const nextUnlock = plan.nextUnlockAt;
     const nextUnlockText = `${nextUnlock.getMonth() + 1} 月 ${nextUnlock.getDate()} 日（週一）`;
+    // The month's cards are done and nothing more opens until the next period
+    // starts — a different wait from the weekly cap's, and a much longer one, so
+    // it gets its own date and its own instruction.
+    const monthDone = reviewReason === "month";
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const nextMonthText = `${nextMonth.getMonth() + 1} 月 ${nextMonth.getDate()} 日`;
     return (
       <section className="today-view">
         <div className="page-intro">
           <div>
             <span className="eyebrow">
               TODAY · {formatPeriod(activePeriod)} ·{" "}
-              {reviewMode ? `複習第 ${reviewRound + 1} 輪` : "已完成"}
+              {monthDone ? "本月完成" : `複習第 ${reviewRound + 1} 輪`}
             </span>
             <h1>
-              {reviewReason === "week"
-                ? "本週的新教材已全部開放。"
-                : "本月教材已全部完成。"}
+              {monthDone
+                ? "本月單字與文法進度完成，去學學閱讀聽力吧。"
+                : "本週的新教材已全部開放。"}
             </h1>
             <p>
-              {reviewReason === "week"
-                ? `每週上限為 ${plan.allowance.vocabulary} 個單字、${plan.allowance.grammar} 條文法（累計至第 ${plan.allowance.week} 週）。接下來進入複習模式，小測驗會一輪接一輪，直到 ${nextUnlockText} 自動開放新進度。`
-                : "你已把本月開放的內容全部標記為「記得」以上。先用小測驗保持手感，下個月會自動開放新教材。"}
+              {monthDone
+                ? // Kept short on purpose: the card below carries the dates and
+                  // the numbers, and this paragraph sits right above it.
+                  "這個月的單字與文法都達標了。剩下的時間交給閱讀和聽力 —— 檢定的四個科目是分開計分的，另外兩科不會因為卡片背得多而變好。"
+                : `每週上限為 ${plan.allowance.vocabulary} 個單字、${plan.allowance.grammar} 條文法（累計至第 ${plan.allowance.week} 週）。接下來進入複習模式，小測驗會一輪接一輪，直到 ${nextUnlockText} 自動開放新進度。`}
             </p>
           </div>
           <div className="today-ring">
-            <strong>{reviewRound + 1}</strong>
-            <span>輪</span>
-            <small>複習中</small>
+            {monthDone ? (
+              <>
+                <strong>{balance.mediaOwed}</strong>
+                <span>題</span>
+                <small>閱讀聽力待做</small>
+              </>
+            ) : (
+              <>
+                <strong>{reviewRound + 1}</strong>
+                <span>輪</span>
+                <small>複習中</small>
+              </>
+            )}
           </div>
         </div>
         <DailyPaceCard pace={dailyPace} />
-        <div className="week-card unlock-notice" role="status">
-          ↻ 複習模式：{reviewReason === "week" ? `${nextUnlockText} 自動開放新教材` : "等待下個月解鎖"}
-        </div>
+        {/* Not in the page intro, deliberately. `.today-view .page-intro p` is
+            display:none on phones — the header there is cut down to a headline
+            and the ring — and the intro's first column is narrowed by that ring
+            anyway. A card in the flow keeps both the sentence and the buttons
+            at full width on the screen this matters most on. */}
+        {monthDone ? (
+          <div className="week-card pace-nudge" role="status">
+            <span>下個月才開放</span>
+            <strong>本月的單字與文法已全部完成</strong>
+            <p>
+              {nextMonthText}才會放出下個月的新卡，這個月不會再有新的單字文法。
+              {balance.mediaOwed > 0
+                ? `現在還推得動的只剩閱讀聽力：閱讀還差 ${balance.reading} 題、聽力還差 ${balance.listening} 題。`
+                : "閱讀與聽力也都達標了，接下來用複習和模考保持手感就好。"}
+            </p>
+            <MediaJump balance={balance} goMedia={goMedia} />
+          </div>
+        ) : (
+          <div className="week-card unlock-notice" role="status">
+            ↻ 複習模式：{nextUnlockText} 自動開放新教材
+          </div>
+        )}
         <div className="dashboard-grid">
           {activeQuiz ? (
             <StudyQuizPanel
@@ -1161,6 +1225,21 @@ function TodayView({
       {notice && (
         <div className="week-card unlock-notice" role="status">
           ✓ {notice}
+        </div>
+      )}
+      {balance.suggestMedia && (
+        <div className="week-card pace-nudge" role="status">
+          <span>建議</span>
+          <strong>
+            單字文法已超前 {balance.cardsDelta} 項
+            {balance.daysAhead >= 1 ? `（約 ${balance.daysAhead} 天份）` : ""}
+          </strong>
+          <p>
+            這一批可以照常做完，但今天多出來的時間換到閱讀聽力更划算 ——
+            閱讀還差 {balance.reading} 題、聽力還差 {balance.listening}{" "}
+            題，而檢定四個科目是分開計分的。
+          </p>
+          <MediaJump balance={balance} goMedia={goMedia} />
         </div>
       )}
       <div className="dashboard-grid">

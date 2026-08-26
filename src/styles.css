@@ -822,6 +822,55 @@ a {
   opacity: 0.72;
   line-height: 1.6;
 }
+/* The two buttons that send a learner to 閱讀聽力. They appear on the green
+   .week-card nudge and, on the month-complete screen, straight onto the white
+   page-intro, so the colours are inherited rather than fixed. */
+.media-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.media-jump button {
+  flex: 1 1 165px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 12px 15px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: inherit;
+}
+.media-jump button strong {
+  font: 700 15px "Noto Serif JP";
+}
+.media-jump button small {
+  font-size: 12px;
+  color: var(--moss);
+}
+.media-jump button:hover {
+  border-color: var(--green);
+}
+.week-card .media-jump button {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.38);
+  color: #fff;
+}
+.week-card .media-jump button small {
+  color: rgba(255, 255, 255, 0.78);
+}
+.week-card .media-jump button:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: #fff;
+}
+/* .week-card p is dimmed to 0.72 for the passive unlock notice; this one is the
+   actual advice, so it has to stay readable. */
+.pace-nudge p {
+  opacity: 0.88;
+}
+
 .toolbar {
   display: flex;
   gap: 12px;
@@ -2535,15 +2584,24 @@ body {
   gap: 16px;
   flex-wrap: wrap;
 }
-.report-period {
+/* Written as `label.report-period`, not `.report-period`, on purpose: the
+   generic `.report-card label` rule further up also matches this element and,
+   being class-plus-type, outranks a bare class. It won — so the picker laid out
+   as inline text with the select sitting *after* the words 報告月份 rather than
+   under them, and `width: 100%` then measured from that indented start and ran
+   off the right edge of the phone. Matching its specificity is the fix; raising
+   this one above it would only move the problem to the next generic rule. */
+label.report-period {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 4px;
+  margin: 0;
   font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
+  color: var(--moss);
 }
 .report-period select {
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 6px 10px;
@@ -2555,7 +2613,7 @@ body {
   .report-head {
     flex-direction: column;
   }
-  .report-period {
+  label.report-period {
     width: 100%;
   }
   .report-period select {
