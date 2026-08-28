@@ -5,10 +5,10 @@
 // that, but these checks keep the corruption from creeping back in.
 import fs from "node:fs";
 import path from "node:path";
+import { loadVocabAuthority } from "./source/vocab-authority.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const periodsRoot = path.join(root, "public", "content", "periods");
-const authorityPath = path.join(root, "scripts", "source", "vocab-authority.json");
 
 const vocabulary = [];
 for (const file of fs.readdirSync(periodsRoot).sort()) {
@@ -16,9 +16,7 @@ for (const file of fs.readdirSync(periodsRoot).sort()) {
   const payload = JSON.parse(fs.readFileSync(path.join(periodsRoot, file), "utf8"));
   vocabulary.push(...(payload.vocabulary || []));
 }
-const authority = new Map(
-  JSON.parse(fs.readFileSync(authorityPath, "utf8")).map((row) => [row.id, row]),
-);
+const authority = new Map(loadVocabAuthority().map((row) => [row.id, row]));
 
 const KANA_ONLY = /^[ぁ-ゟァ-ヿー]+$/;
 const HAS_KANJI = /[一-龯]/;

@@ -18,6 +18,7 @@
 // duplicate or a non-word are re-issued.
 import fs from "node:fs";
 import path from "node:path";
+import { readingReview } from "./source/vocab-authority.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const outerTmp = path.resolve(root, "..", "tmp");
@@ -264,6 +265,17 @@ for (const row of all) {
     : null;
   row.pos = row.senses[0].pos;
   row.glossEn = row.senses.slice(0, 3).map((s) => s.gloss.join("; ")).join(" / ");
+}
+
+// resolve() ranks JMdict entries on the English gloss alone, so a word written the
+// same way under two readings can land on the wrong entry (大家 on たいか rather than
+// おおや). Those calls are decided by hand in vocab-reading-review.json; re-apply them
+// here so a rebuild does not quietly undo the decision.
+for (const [id, review] of Object.entries(readingReview)) {
+  if (review.decision !== "fix") continue;
+  const row = all.find((r) => r.id === id);
+  if (!row) throw new Error(`讀音覆寫找不到詞條：${id}`);
+  Object.assign(row, review.fix);
 }
 
 // Ids whose word changed. The app clears recorded progress for these, because a

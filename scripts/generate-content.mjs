@@ -7,6 +7,7 @@ import { readingFormatFor, listeningFormatFor, READING_TOTAL, LISTENING_TOTAL } 
 import { ITEM_BUILDERS, grammarClozeItem, hasOwnExample, patternCore, usableForGrammarCloze, usableForReading } from "./source/build-items.mjs";
 import { buildPractice, PRACTICE_PER_MONTH } from "./source/build-practice.mjs";
 import { hasChineseMarker } from "./source/chinese-marker.mjs";
+import { loadVocabAuthority } from "./source/vocab-authority.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dryRun = process.argv.includes("--dry-run");
@@ -45,7 +46,8 @@ const readSource = (name) =>
   JSON.parse(fs.readFileSync(path.join(root, "scripts", "source", name), "utf8"));
 // Word forms, kana readings, part of speech and English senses, resolved against
 // JMdict by scripts/rebuild-vocab-authority.mjs.
-const vocabAuthority = readSource("vocab-authority.json");
+// Carries the hand-decided reading fixes; see scripts/source/vocab-authority.mjs.
+const vocabAuthority = loadVocabAuthority();
 // Hand-written Traditional Chinese, keyed by the numeric part of the vocab id.
 const vocabZh = readSource("vocab-zh.json");
 // Hand-written example sentences for entries the source deck cannot supply.
@@ -242,7 +244,12 @@ function loadWords() {
           explanationZh: vocabExplanationZh(row, meaningZh),
         },
       ],
-      audioText: row.term,
+      // Speak the kana, not the word form. A speech engine reading 最中 off the kanji
+      // says もなか (the sweet), 空く says あく, 仏 says ぶつ — the card then teaches one
+      // reading and plays another. The kana is unambiguous, and nothing is given away
+      // by it: the study quiz asks for the meaning, and the 漢字読み practice questions
+      // carry no audio at all.
+      audioText: row.reading || row.term,
       unlockPeriod: halfYearPeriod(vocabOrder, row.id, level),
       tags: [...new Set([...(row.pos || []).slice(0, 2), level])],
       sourceRefs: [

@@ -33,6 +33,43 @@ for(const card of all.grammar){
   if(card.audioText!==expectedAudio)throw new Error(`grammar audio does not match pattern: ${card.id}`);
   if(card.audioText===card.examples[0].ja)throw new Error(`grammar pattern audio duplicates example: ${card.id}`);
 }
+// A card must say aloud what it teaches. Speaking the word form let the engine choose
+// its own reading, so 最中(さいちゅう) played as もなか and 仏(ほとけ) as ぶつ.
+for(const card of all.vocabulary){
+  if(card.audioText!==card.reading)throw new Error(`vocabulary audio is not the card's reading: ${card.id}`);
+}
+// The JLPT word list names a reading for every entry; the JMdict resolver ranks on the
+// English gloss alone and so can land on a homograph with a different reading. Every
+// disagreement is decided by hand in vocab-reading-review.json — recompute the set here
+// so a new one cannot slip in unreviewed, and a stale decision cannot linger.
+{
+  const spine=JSON.parse(fs.readFileSync(path.join(import.meta.dirname,"source","waller-spine.json"),"utf8"));
+  const review=JSON.parse(fs.readFileSync(path.join(import.meta.dirname,"source","vocab-reading-review.json"),"utf8")).reviewed;
+  const shipped=new Map(all.vocabulary.map(card=>[card.id,card]));
+  const disagreeing=new Set();
+  for(const word of spine.words){
+    const card=word.existingId&&shipped.get(word.existingId);
+    if(card&&word.reading&&card.reading&&word.reading!==card.reading)disagreeing.add(card.id);
+  }
+  for(const id of disagreeing){
+    if(!review[id])throw new Error(`word list and card disagree on the reading, unreviewed: ${id}`);
+  }
+  for(const [id,entry] of Object.entries(review)){
+    const card=shipped.get(id);
+    if(!card)throw new Error(`reading review names an id that is not shipped: ${id}`);
+    if(!entry.why)throw new Error(`reading review needs a reason: ${id}`);
+    if(entry.decision==="keep"){
+      // Still a disagreement, deliberately: the card keeps its own reading.
+      if(!disagreeing.has(id))throw new Error(`reading review no longer applies, delete it: ${id}`);
+      if(card.reading!==entry.ours)throw new Error(`reading review is stale: ${id}`);
+    }else if(entry.decision==="fix"){
+      // Fixed means the card now matches the word list, so it must NOT disagree.
+      if(disagreeing.has(id))throw new Error(`reading fix was not applied: ${id}`);
+      if(card.reading!==entry.fix?.reading)throw new Error(`reading fix does not match the card: ${id}`);
+      if(entry.fix.reading!==entry.waller)throw new Error(`reading fix does not match the word list: ${id}`);
+    }else throw new Error(`unknown reading review decision: ${id}`);
+  }
+}
 for(const card of all.vocabulary){
   if(!card.sourceRefs.includes(`https://www.sigure.tw/learn-japanese/vocabulary/${card.level.toLowerCase()}/`))throw new Error(`missing Sigure vocabulary reference: ${card.id}`);
   if(!card.referenceNoteZh?.includes("不轉載")&&!card.referenceNoteZh?.includes("未轉載"))throw new Error(`missing vocabulary reference disclaimer: ${card.id}`);

@@ -1,0 +1,141 @@
+{
+ "_note": [
+  "Waller 的 N3/N2 詞表指名了每個詞條的讀音，rebuild-vocab-authority.mjs 卻只用英文釋義去挑 JMdict 條目，",
+  "所以同形異讀的字會挑到另一個字：大家 挑成たいか（大師）而不是おおや（房東），辛い 挑成からい 而不是つらい，",
+  "兩者的例句都是照 Waller 那個意思寫的，於是讀音、釋義與例句互相矛盾。",
+  "這個檔案把「詞表讀音」與「卡片讀音」不一致的每一條都列出來並做成決定；",
+  "validate-content.mjs 會重算這份清單，多出或少掉任何一條都會讓建置失敗，避免同類錯誤再悄悄溜進去。",
+  "decision=keep：兩讀皆可或詞表那欄有誤，維持卡片現狀。decision=fix：卡片挑錯條目，以 fix 欄覆寫。",
+  "釋義的家還是 vocab-zh.json；本檔只管讀音與它連帶的 JMdict 條目欄位。"
+ ],
+ "reviewed": {
+  "vocab-0031": {
+   "waller": "ほんと",
+   "ours": "ほんとう",
+   "decision": "keep",
+   "why": "ほんと 是ほんとう的口語省略形，卡片教標準形。"
+  },
+  "vocab-0243": {
+   "waller": "あまり",
+   "ours": "あんまり",
+   "decision": "keep",
+   "why": "詞條本身就是あんまり；詞表讀音欄填的是同義詞あまり。"
+  },
+  "vocab-0575": {
+   "waller": "こうば",
+   "ours": "こうじょう",
+   "decision": "keep",
+   "why": "兩讀皆通行；こうじょう 為一般用法，こうば 偏指小型工廠。"
+  },
+  "vocab-0691": {
+   "waller": "つらい",
+   "ours": "からい",
+   "decision": "fix",
+   "why": "例句「辛い経験を乗り越えた」講的是つらい（痛苦）；からい（辣）是另一個 JMdict 條目，且屬 N4。",
+   "fix": {
+    "seq": 1365860,
+    "reading": "つらい",
+    "senses": [
+     {
+      "pos": [
+       "adj-i"
+      ],
+      "misc": [
+       "uk"
+      ],
+      "inf": [],
+      "gloss": [
+       "painful",
+       "bitter",
+       "heart-breaking",
+       "difficult (emotionally)"
+      ]
+     },
+     {
+      "pos": [
+       "adj-i"
+      ],
+      "misc": [
+       "uk"
+      ],
+      "inf": [],
+      "gloss": [
+       "tough",
+       "difficult",
+       "hard (usu. of situations)"
+      ]
+     },
+     {
+      "pos": [
+       "adj-i"
+      ],
+      "misc": [
+       "uk"
+      ],
+      "inf": [],
+      "gloss": [
+       "cruel",
+       "harsh",
+       "cold"
+      ]
+     }
+    ],
+    "pos": [
+     "adj-i"
+    ],
+    "glossEn": "painful; bitter; heart-breaking; difficult (emotionally) / tough; difficult; hard (usu. of situations) / cruel; harsh; cold"
+   }
+  },
+  "vocab-0922": {
+   "waller": "おおや",
+   "ours": "たいか",
+   "decision": "fix",
+   "why": "例句「大家さんが家賃を値上げすると言いました」講的是房東，是おおや；たいか（大師）是另一個 JMdict 條目。",
+   "fix": {
+    "seq": 1413140,
+    "reading": "おおや",
+    "senses": [
+     {
+      "pos": [
+       "n"
+      ],
+      "misc": [],
+      "inf": [],
+      "gloss": [
+       "landlord",
+       "landlady"
+      ]
+     }
+    ],
+    "pos": [
+     "n"
+    ],
+    "glossEn": "landlord; landlady"
+   }
+  },
+  "vocab-1058": {
+   "waller": "さっし",
+   "ours": "ブラシ",
+   "decision": "keep",
+   "why": "詞表讀音欄誤填「刷子」的讀音；詞條是外來語ブラシ。"
+  },
+  "vocab-1136": {
+   "waller": "みょうごにち",
+   "ours": "あさって",
+   "decision": "keep",
+   "why": "みょうごにち 是書面語，日常讀あさって。"
+  },
+  "vocab-1137": {
+   "waller": "ぶつ",
+   "ours": "うつ",
+   "decision": "keep",
+   "why": "うつ 為標準讀法，ぶつ 是限於「毆打」的口語變體。"
+  },
+  "vocab-1868": {
+   "waller": "わるくち",
+   "ours": "わるぐち",
+   "decision": "keep",
+   "why": "兩讀皆通行，JMdict 以わるぐち 為主。"
+  }
+ }
+}
