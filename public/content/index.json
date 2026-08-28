@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-08-16T15:21:03.672Z",
+  "generatedAt": "2026-08-28T07:31:51.512Z",
   "contentVersion": "2026-08-jmdict-rebuild",
-  "contentHash": "d30c3888232d7e21",
+  "contentHash": "906495d8834a5c21",
   "reissuedIds": [
     "vocab-0005",
     "vocab-0007",
@@ -1347,57 +1347,57 @@
     {
       "period": "115-07",
       "vocabulary": 400,
-      "grammar": 30
+      "grammar": 34
     },
     {
       "period": "115-08",
       "vocabulary": 800,
-      "grammar": 60
+      "grammar": 67
     },
     {
       "period": "115-09",
       "vocabulary": 1200,
-      "grammar": 90
+      "grammar": 101
     },
     {
       "period": "115-10",
       "vocabulary": 1600,
-      "grammar": 120
+      "grammar": 134
     },
     {
       "period": "115-11",
       "vocabulary": 1600,
-      "grammar": 120
+      "grammar": 134
     },
     {
       "period": "115-12",
       "vocabulary": 1600,
-      "grammar": 120
+      "grammar": 134
     },
     {
       "period": "116-01",
       "vocabulary": 2000,
-      "grammar": 140
+      "grammar": 152
     },
     {
       "period": "116-02",
       "vocabulary": 2400,
-      "grammar": 160
+      "grammar": 170
     },
     {
       "period": "116-03",
       "vocabulary": 2800,
-      "grammar": 180
+      "grammar": 187
     },
     {
       "period": "116-04",
       "vocabulary": 3200,
-      "grammar": 200
+      "grammar": 205
     },
     {
       "period": "116-05",
       "vocabulary": 3600,
-      "grammar": 220
+      "grammar": 223
     },
     {
       "period": "116-06",

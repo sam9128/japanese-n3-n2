@@ -17,11 +17,17 @@ const periods = ["115-07", "115-08", "115-09", "115-10", "115-11", "115-12", "11
 //
 // 115-11 and 115-12 stay flat on purpose: 115/11 is the five-mock-exam month and
 // the N3 sitting is 115/12/06, so both are revision only. That puts all 1600 N3
-// words and all 120 N3 grammar patterns before the exam, and spreads the N2 half
-// evenly over 116-01..116-06 instead of dumping 800 words into 116-01 and leaving
-// 116-06 empty.
+// words before the exam, and spreads the N2 half evenly over 116-01..116-06
+// instead of dumping 800 words into 116-01 and leaving 116-06 empty.
 const vocabCaps = [400, 800, 1200, 1600, 1600, 1600, 2000, 2400, 2800, 3200, 3600, 4000];
-const grammarCaps = [30, 60, 90, 120, 120, 120, 140, 160, 180, 200, 220, 240];
+// Grammar has no hand-written caps. It used to, and they disagreed with the line
+// that assigned the level: the caps released 120 patterns before the exam while
+// the level cut called the first 180 of them N3, so sixty N3 patterns came out in
+// 116-01..116-03 — one to three months after the 115/12/06 sitting. Two constants
+// that must agree are one constant too many, so the schedule is now derived from
+// the levels themselves (see grammarPeriod).
+const N3_MONTHS = 4; // 115-07..115-10; 115-11 and 115-12 are revision only.
+const N2_MONTHS = 6; // 116-01..116-06.
 const sigureRefs = {
   vocabulary: {
     N3: "https://www.sigure.tw/learn-japanese/vocabulary/n3/",
@@ -255,21 +261,46 @@ function grammarUsageZh(term) {
 function grammarAudioText(term) {
   return term.replace(/[〜～]/g, "").replace(/[（(][^）)]*[）)]/g, "").trim();
 }
+// Which level each pattern belongs to. A source file rather than a slice index:
+// the old `index < 180` cut a thematically ordered list, so it labelled 〜てみる
+// and 〜てもらう N2 while calling 〜だけあって and 〜次第で N3. See its _note.
+const grammarLevels = readSource("grammar-levels.json").levels;
+
+/**
+ * Which month a pattern opens in, derived from its level.
+ *
+ * Each half-year holds its own level and spreads its own patterns evenly, so the
+ * N3 set is complete before the mocks in 115/11 and the sitting on 115/12/06 —
+ * whatever the counts turn out to be after a re-classification.
+ */
+const grammarOrder = { N3: [], N2: [] };
+function grammarPeriod(term, level) {
+  const order = grammarOrder[level];
+  const at = order.indexOf(term);
+  const offset = level === "N3" ? 0 : N3_MONTHS + 2; // skip the two revision months
+  const months = level === "N3" ? N3_MONTHS : N2_MONTHS;
+  return periods[offset + Math.min(months - 1, Math.floor((at * months) / order.length))];
+}
+
 function makeGrammar() {
   const unique = [...new Set(grammarPatterns)].slice(0, 240);
   if (unique.length < 240) throw new Error(`文法句型不足：${unique.length}`);
   const missingExamples = unique.filter((term) => !grammarExamples.has(term));
   if (missingExamples.length) throw new Error(`文法例句不足：${missingExamples.join("、")}`);
+  const missingLevels = unique.filter((term) => !grammarLevels[term]);
+  if (missingLevels.length) throw new Error(`文法句型缺少分級：${missingLevels.join("、")}`);
+  grammarOrder.N3 = unique.filter((term) => grammarLevels[term] === "N3");
+  grammarOrder.N2 = unique.filter((term) => grammarLevels[term] === "N2");
   return unique.map((term, index) => {
     const exampleJa = grammarExamples.get(term);
     const exampleZh = exampleTranslationsZh[exampleJa];
     if (!exampleZh) throw new Error(`例句缺少中文翻譯：${exampleJa}`);
-    const level = index < 180 ? "N3" : "N2";
+    const level = grammarLevels[term];
     return {
       id: `grammar-${String(index + 1).padStart(3, "0")}`, level, category: "grammar", term,
       reading: "文法句型", meaningZh: explainGrammar(term), usageZh: grammarUsageZh(term),
       examples: [{ ja: exampleJa, zh: exampleZh, explanationZh: `這句使用「${term}」。${explainGrammar(term)}` }],
-      audioText: grammarAudioText(term), unlockPeriod: periodFor(index, grammarCaps),
+      audioText: grammarAudioText(term), unlockPeriod: grammarPeriod(term, level),
       tags: [`${level}文法`], sourceRefs: ["self-authored", sigureRefs.grammar[level]],
       referenceNoteZh: `句型分級與接續觀念交叉參考時雨之町 ${level} 文法索引；解釋、例句與題目均為本計畫自編。`,
       license: "CC BY 4.0 — 本計畫自編"
@@ -602,6 +633,12 @@ const questionAudit=auditGeneratedQuestions();
 // against the old word says nothing about the new one, so the app drops them once,
 // keyed on contentVersion.
 const reissuedIds = readSource("vocab-reissued-ids.json").ids;
+// Counted from what was actually assigned rather than declared alongside it —
+// a second hand-written copy of this schedule is exactly what went wrong before.
+const grammarCumulative = periods.reduce((running, period) => {
+  const upto = running.at(-1) || 0;
+  return [...running, upto + grammar.filter((card) => card.unlockPeriod === period).length];
+}, []);
 // Lesson packs, hashed. The service worker drops its cached packs when this
 // changes, so a rebuild reaches the learner on their first visit rather than
 // their second.
@@ -628,7 +665,7 @@ const contentHash = createHash("sha256")
   .update(packPayloads.map((payload) => JSON.stringify(payload)).join("\n"))
   .digest("hex")
   .slice(0, 16);
-const index = { generatedAt:new Date().toISOString(), contentVersion:"2026-08-jmdict-rebuild", contentHash, reissuedIds, periods, counts:{vocabulary:vocabulary.length,grammar:grammar.length,reading:reading.length,listening:listening.length,practice:practice.length,monthlyChecks:12,n3Mocks:5,n2Mocks:2}, unlockSchedule:periods.map((period,i)=>({period,vocabulary:vocabCaps[i],grammar:grammarCaps[i]})), sources:[{name:"Language-Learning-decks",url:"https://github.com/vbvss199/Language-Learning-decks",license:"MIT / CC BY-SA 4.0 frequency data"},{name:"EDRDG/JMdict",url:"https://www.edrdg.org/",license:"EDRDG licence"},{name:"時雨之町",url:"https://www.sigure.tw/",use:"classification and grammar cross-check only; no copied explanations, examples, articles, or quizzes"},{name:"JLPT sample questions",url:"https://www.jlpt.jp/e/samples/sampleindex.html",use:"link only"}] };
+const index = { generatedAt:new Date().toISOString(), contentVersion:"2026-08-jmdict-rebuild", contentHash, reissuedIds, periods, counts:{vocabulary:vocabulary.length,grammar:grammar.length,reading:reading.length,listening:listening.length,practice:practice.length,monthlyChecks:12,n3Mocks:5,n2Mocks:2}, unlockSchedule:periods.map((period,i)=>({period,vocabulary:vocabCaps[i],grammar:grammarCumulative[i]})), sources:[{name:"Language-Learning-decks",url:"https://github.com/vbvss199/Language-Learning-decks",license:"MIT / CC BY-SA 4.0 frequency data"},{name:"EDRDG/JMdict",url:"https://www.edrdg.org/",license:"EDRDG licence"},{name:"時雨之町",url:"https://www.sigure.tw/",use:"classification and grammar cross-check only; no copied explanations, examples, articles, or quizzes"},{name:"JLPT sample questions",url:"https://www.jlpt.jp/e/samples/sampleindex.html",use:"link only"}] };
 if (!dryRun) {
   fs.mkdirSync(outRoot,{recursive:true});
   // Written from the same payloads the hash was taken over, so the two can never

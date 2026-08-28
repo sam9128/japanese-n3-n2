@@ -48,9 +48,15 @@ for(const card of all.grammar){
 // so N3 material was still being released in 116-02 \u2014 after the exam, and after
 // the mocks that needed it, which left the last N3 mocks short of source
 // questions. Both halves of the year must hold their own level.
+//
+// This check originally covered only reading and listening, because that is where
+// the bug was found. Grammar had the same fault and went on shipping it: sixty
+// patterns labelled N3 were unlocking in 116-01..116-03, after the sitting. The
+// loop now covers all four categories — a rule worth having for two of them was
+// never a rule about those two.
 {
   const n3End=index.periods.indexOf("115-12");
-  for(const item of [...all.reading,...all.listening]){
+  for(const item of [...all.vocabulary,...all.grammar,...all.reading,...all.listening]){
     const at=index.periods.indexOf(item.unlockPeriod);
     if(item.level==="N3"&&at>n3End)throw new Error(`N3 material released after the N3 exam: ${item.id} (${item.unlockPeriod})`);
     if(item.level==="N2"&&at<=n3End)throw new Error(`N2 material released in the N3 half: ${item.id} (${item.unlockPeriod})`);
