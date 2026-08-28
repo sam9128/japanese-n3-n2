@@ -4,7 +4,8 @@
   "這是重建詞庫骨幹的候選來源，尚未接上產生器。",
   "existingId 為空者代表還沒有繁體中文釋義；以英文釋義過 ECDICT 反查中文，",
   "正是 rebuild-vocab-authority 開頭寫明「在資料層無法修正」的老作法（volume of sound → volume → 卷），",
-  "所以這裡不自動補譯，只列出待撰清單。"
+  "所以這裡不自動補譯，只列出待撰清單。",
+  "來源 CSV 有 14 筆讀音欄不是讀音——13 筆填了詞性註記（「（感）」「（副）」），1 筆是亂碼（賛成→Uӣ[い）；已改用 JMdict 的讀音。"
  ],
  "_source": "https://github.com/evanclan/OpenJLPT (CC BY-SA 4.0) — 等級轉自 https://www.tanos.co.uk/jlpt/ (CC BY)",
  "_counts": {
@@ -498,7 +499,7 @@
   },
   {
    "term": "うん",
-   "reading": "（感）",
+   "reading": "うん",
    "wallerLevel": "N3",
    "seq": 1001090,
    "pos": [
@@ -1312,7 +1313,7 @@
   },
   {
    "term": "しまい",
-   "reading": "（終わり）",
+   "reading": "しまい",
    "wallerLevel": "N3",
    "seq": 1579490,
    "pos": [
@@ -1325,7 +1326,7 @@
   },
   {
    "term": "しまう",
-   "reading": "（終わる）",
+   "reading": "しまう",
    "wallerLevel": "N3",
    "seq": 1305380,
    "pos": [
@@ -1340,7 +1341,7 @@
   },
   {
    "term": "しまった",
-   "reading": "（感）",
+   "reading": "しまった",
    "wallerLevel": "N3",
    "seq": 1005600,
    "pos": [
@@ -1554,7 +1555,7 @@
   },
   {
    "term": "すみません",
-   "reading": "（感）",
+   "reading": "すみません",
    "wallerLevel": "N3",
    "seq": 1295060,
    "pos": [
@@ -1746,7 +1747,7 @@
   },
   {
    "term": "それ",
-   "reading": "（接。感）",
+   "reading": "それ",
    "wallerLevel": "N3",
    "seq": 1006970,
    "pos": [
@@ -2077,7 +2078,7 @@
   },
   {
    "term": "できる",
-   "reading": "（可能。出現。発生）",
+   "reading": "できる",
    "wallerLevel": "N3",
    "seq": 1339500,
    "pos": [
@@ -2160,7 +2161,7 @@
   },
   {
    "term": "どう",
-   "reading": "（接。副）",
+   "reading": "どう",
    "wallerLevel": "N3",
    "seq": 1000050,
    "pos": [
@@ -2350,7 +2351,7 @@
   },
   {
    "term": "とん",
-   "reading": "（1000",
+   "reading": "たん",
    "wallerLevel": "N3",
    "seq": 1585980,
    "pos": [
@@ -2487,7 +2488,7 @@
   },
   {
    "term": "ね",
-   "reading": "（感）",
+   "reading": "ね",
    "wallerLevel": "N3",
    "seq": 1290020,
    "pos": [
@@ -2543,7 +2544,7 @@
   },
   {
    "term": "はい",
-   "reading": "（感）",
+   "reading": "はい",
    "wallerLevel": "N3",
    "seq": 1010080,
    "pos": [
@@ -2786,7 +2787,7 @@
   },
   {
    "term": "ふと",
-   "reading": "（副）",
+   "reading": "ふと",
    "wallerLevel": "N3",
    "seq": 1493240,
    "pos": [
@@ -3286,7 +3287,7 @@
   },
   {
    "term": "よろしく",
-   "reading": "（感）",
+   "reading": "よろしく",
    "wallerLevel": "N3",
    "seq": 1224890,
    "pos": [
@@ -11268,7 +11269,7 @@
   },
   {
    "term": "賛成",
-   "reading": "Uӣ[い",
+   "reading": "さんせい",
    "wallerLevel": "N3",
    "seq": 1304200,
    "pos": [
@@ -17499,7 +17500,7 @@
   },
   {
    "term": "暖かい",
-   "reading": "あたたか(い)",
+   "reading": "あたたかい",
    "wallerLevel": "N3",
    "seq": 1586420,
    "pos": [
@@ -26533,7 +26534,7 @@
   },
   {
    "term": "じゅうたん",
-   "reading": "（カーペット）",
+   "reading": "じゅうたん",
    "wallerLevel": "N2",
    "seq": 1595370,
    "pos": [
@@ -26978,7 +26979,7 @@
   },
   {
    "term": "だいいち",
-   "reading": "（副）",
+   "reading": "だいいち",
    "wallerLevel": "N2",
    "seq": 1415270,
    "pos": [
@@ -28293,7 +28294,7 @@
   },
   {
    "term": "ミリ",
-   "reading": "（メートル）",
+   "reading": "ミリ",
    "wallerLevel": "N2",
    "seq": 1131830,
    "pos": [
