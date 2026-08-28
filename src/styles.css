@@ -1265,6 +1265,66 @@ a {
   font-size: 12px;
   color: #6c776f;
 }
+/* Past papers, listed under the card that produced them. Rows, not the outlined
+   green buttons the rest of the card uses — these are a log to scan, and three of
+   those buttons stacked would read as three ways to start the exam. */
+.attempt-log {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.attempt-log h4 {
+  font: 600 11px/1.4 inherit;
+  letter-spacing: 0.08em;
+  color: var(--moss);
+  margin-bottom: 8px;
+}
+.attempt-empty {
+  font-size: 11px;
+  color: #98a29b;
+}
+.attempt-log ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.assessment-grid .attempt-log button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 2px 10px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  background: #fbfcfb;
+  color: inherit;
+  text-align: left;
+}
+.assessment-grid .attempt-log button:hover {
+  border-color: var(--green);
+}
+.attempt-log b {
+  font: 700 15px "Noto Serif JP";
+  grid-row: span 2;
+}
+.attempt-log b.pass {
+  color: var(--green);
+}
+.attempt-log b.fail {
+  color: #b4553f;
+}
+.attempt-log time {
+  font-size: 12px;
+}
+.attempt-log small {
+  font-size: 10px;
+  color: #6c776f;
+}
 .assessment-grid button,
 .settings-grid button,
 .report-card button,

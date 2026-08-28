@@ -2169,6 +2169,19 @@ function ExamAnswerCard({
   );
 }
 
+// "2026/08/28 14:05" — long enough to tell two attempts on the same day apart.
+function attemptStamp(value) {
+  const at = new Date(value || "");
+  if (Number.isNaN(at.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}/${pad(at.getMonth() + 1)}/${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
+function examClock(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  return `${Math.floor(total / 60)} 分 ${total % 60} 秒`;
+}
+
 function MockView({
   data,
   activePeriod,
@@ -2180,6 +2193,23 @@ function MockView({
   updatePage,
 }) {
   const list = data.assessments.filter((x) => isUnlocked(x, activePeriod));
+  // Every submission was already being stored, answer by answer, but nothing ever
+  // read them back: once the learner left the review screen the paper was gone.
+  // Group them per assessment so each card can offer its own history.
+  const attemptsById = useMemo(() => {
+    const byExam = new Map();
+    for (const result of store.results || []) {
+      if (!result?.assessmentId) continue;
+      const attempts = byExam.get(result.assessmentId) || [];
+      attempts.push(result);
+      byExam.set(result.assessmentId, attempts);
+    }
+    for (const attempts of byExam.values())
+      attempts.sort((a, b) =>
+        String(b.completedAt || "").localeCompare(String(a.completedAt || "")),
+      );
+    return byExam;
+  }, [store.results]);
   const exam = data.assessments.find((item) => item.id === pageState.examId);
   const answers = pageState.answers || {};
   const review = pageState.review;
@@ -2255,6 +2285,8 @@ function MockView({
     ).length;
     const score = Math.round((correct / questions.length) * 100);
     const finishedSeconds = seconds;
+    // One timestamp for both, so the stored paper and the screen showing it agree.
+    const completedAt = new Date().toISOString();
     await store.saveResult({
       id: `${exam.id}-${Date.now()}`,
       assessmentId: exam.id,
@@ -2264,14 +2296,39 @@ function MockView({
       answeredCount,
       answers,
       submittedEarly: answeredCount < questions.length,
-      completedAt: new Date().toISOString(),
+      completedAt,
     });
     updatePage((current) => ({
       ...current,
       examId: null,
       answers: {},
       startedAt: null,
-      review: { examId: exam.id, answers, score, seconds: finishedSeconds },
+      review: {
+        examId: exam.id,
+        answers,
+        score,
+        seconds: finishedSeconds,
+        completedAt,
+      },
+      scrollY: 0,
+    }));
+    window.scrollTo(0, 0);
+  }
+  // Reopen a stored paper. The review screen already renders from nothing but
+  // {examId, answers, score, seconds}, so a past attempt needs no separate view.
+  function openAttempt(result) {
+    updatePage((current) => ({
+      ...current,
+      examId: null,
+      answers: {},
+      startedAt: null,
+      review: {
+        examId: result.assessmentId,
+        answers: result.answers || {},
+        score: result.score,
+        seconds: Number(result.seconds) || 0,
+        completedAt: result.completedAt,
+      },
       scrollY: 0,
     }));
     window.scrollTo(0, 0);
@@ -2317,10 +2374,10 @@ function MockView({
           <strong>
             {review.score >= reviewExam.threshold ? "合格" : "需要再加強"}
           </strong>
-          <span>
-            作答時間 {Math.floor(review.seconds / 60)} 分 {review.seconds % 60}{" "}
-            秒
-          </span>
+          <span>作答時間 {examClock(review.seconds)}</span>
+          {review.completedAt && (
+            <span>{attemptStamp(review.completedAt)} 交卷</span>
+          )}
         </div>
         <div className="exam-layout review-layout">
           <ExamAnswerCard
@@ -2551,33 +2608,79 @@ function MockView({
       />
       {!list.length && <Empty text="這個月份尚無檢核，請切換到其他月份。" />}
       <div className="assessment-grid">
-        {list.map((x) => (
-          <article key={x.id}>
-            <span>
-              {x.level} · {x.kind === "monthly" ? "月檢核" : "完整模考"}
-            </span>
-            <h3>{x.title}</h3>
-            <p>
-              {x.durationMinutes} 分鐘 · {x.questionCount} 題 · 門檻{" "}
-              {x.threshold}
-            </p>
-            <button
-              onClick={() => {
-                updatePage((current) => ({
-                  ...current,
-                  examId: x.id,
-                  answers: {},
-                  startedAt: Date.now(),
-                  review: null,
-                  scrollY: 0,
-                }));
-                window.scrollTo(0, 0);
-              }}
-            >
-              開始作答
-            </button>
-          </article>
-        ))}
+        {list.map((x) => {
+          const attempts = attemptsById.get(x.id) || [];
+          const best = attempts.length
+            ? Math.max(...attempts.map((a) => Number(a.score) || 0))
+            : null;
+          return (
+            <article key={x.id}>
+              <span>
+                {x.level} · {x.kind === "monthly" ? "月檢核" : "完整模考"}
+              </span>
+              <h3>{x.title}</h3>
+              <p>
+                {x.durationMinutes} 分鐘 · {x.questionCount} 題 · 門檻{" "}
+                {x.threshold}
+              </p>
+              <button
+                onClick={() => {
+                  updatePage((current) => ({
+                    ...current,
+                    examId: x.id,
+                    answers: {},
+                    startedAt: Date.now(),
+                    review: null,
+                    scrollY: 0,
+                  }));
+                  window.scrollTo(0, 0);
+                }}
+              >
+                {attempts.length ? "再作答一次" : "開始作答"}
+              </button>
+              <div className="attempt-log">
+                {attempts.length ? (
+                  <>
+                    <h4>
+                      作答記錄 · {attempts.length} 次
+                      {best !== null && `，最佳 ${best} 分`}
+                    </h4>
+                    <ol>
+                      {attempts.map((attempt) => (
+                        <li key={attempt.id}>
+                          <button
+                            type="button"
+                            onClick={() => openAttempt(attempt)}
+                          >
+                            <b
+                              className={
+                                (Number(attempt.score) || 0) >= x.threshold
+                                  ? "pass"
+                                  : "fail"
+                              }
+                            >
+                              {attempt.score} 分
+                            </b>
+                            <time>{attemptStamp(attempt.completedAt)}</time>
+                            <small>
+                              {examClock(attempt.seconds)} · 作答{" "}
+                              {attempt.answeredCount ??
+                                Object.keys(attempt.answers || {}).length}
+                              /{x.questionCount}
+                              {attempt.submittedEarly ? " · 提前交卷" : ""}
+                            </small>
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  </>
+                ) : (
+                  <p className="attempt-empty">尚無作答記錄</p>
+                )}
+              </div>
+            </article>
+          );
+        })}
       </div>
       <a
         className="source-link"
