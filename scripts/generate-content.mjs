@@ -6,6 +6,7 @@ import { buildReading, buildListening } from "./source/build-media.mjs";
 import { readingFormatFor, listeningFormatFor, READING_TOTAL, LISTENING_TOTAL } from "./source/jlpt-formats.mjs";
 import { ITEM_BUILDERS, grammarClozeItem, hasOwnExample, patternCore, usableForGrammarCloze, usableForReading } from "./source/build-items.mjs";
 import { buildPractice, PRACTICE_PER_MONTH } from "./source/build-practice.mjs";
+import { hasChineseMarker } from "./source/chinese-marker.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dryRun = process.argv.includes("--dry-run");
@@ -541,10 +542,6 @@ const assessments = [
 
 function auditGeneratedQuestions() {
   const hasJapanese=(value)=>/[\u3040-\u30ff\u3400-\u9fff]/.test(value||"");
-  // Catches Chinese prose leaking into a Japanese option. 個 and 該 were in this
-  // set but are ordinary Japanese kanji (数個, 該当), so they rejected real
-  // vocabulary once the word list was rebuilt from JMdict.
-  const hasChineseMarker=(value)=>/[這裡讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
   // Was a whitelist of Chinese words the old templates happened to use, which
   // rejected perfectly good Chinese written any other way. An explanation is
   // Chinese if, once the Japanese it quotes in 「」 is removed, what is left has

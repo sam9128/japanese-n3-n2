@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { hasChineseMarker } from "./source/chinese-marker.mjs";
 import path from "node:path";
 import {READING_FORMATS,LISTENING_FORMATS,readingFormatFor,listeningFormatFor,READING_TOTAL,LISTENING_TOTAL} from "./source/jlpt-formats.mjs";
 import {PRACTICE_PER_MONTH} from "./source/build-practice.mjs";
@@ -85,7 +86,7 @@ for(const card of all.grammar){
 }
 
 const hasJapanese=(value)=>/[\u3040-\u30ff\u3400-\u9fff]/.test(value||"");
-const hasChineseMarker=(value)=>/[這裡讓應嗎們]|下午|上午|二樓|選項|答案|中文|直接放棄|身邊的人/.test(value||"");
+// 與產生器共用同一條規則，避免兩份各自演化。
 const sourceQuestions=new Map();
 const awkwardPatterns=[/するください/,/するもらえ/,/事前に前日まで/,/までに前日まで/,/早めに前日まで/];
 // The service worker drops its cached lesson packs when this changes, which is
