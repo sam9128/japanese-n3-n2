@@ -899,6 +899,10 @@ function TodayView({
   const completedInBatch = cards.filter((item) =>
     STRONG_RATINGS.has(store.progress[item.id]?.rating),
   ).length;
+  const batchCards = useMemo(() => {
+    const grammar = cards.filter((item) => item.category === "grammar").length;
+    return { grammar, vocabulary: cards.length - grammar };
+  }, [cards]);
   const [notice, setNotice] = useState("");
   // In review mode each finished round bumps the counter, which changes the key
   // and lets the quiz effect below start a fresh round — the endless loop that
@@ -1210,10 +1214,16 @@ function TodayView({
             TODAY · {formatPeriod(activePeriod)} · 第 {batchIndex + 1} 批
           </span>
           <h1>把零碎時間，疊成日語實力。</h1>
-          <p>
-            本批 6 個單字、3
-            個文法；全部標為「記得」或「很熟」後，自動開放下一批。
-          </p>
+          {/* Counted off the batch rather than written down: a month holds more
+              words than patterns, so the rounds between two patterns are words
+              only and a fixed sentence would be wrong on most of them. */}
+          {cards.length > 0 && (
+            <p>
+              本批 {batchCards.vocabulary} 個單字
+              {batchCards.grammar ? `、${batchCards.grammar} 個文法` : ""}
+              ；全部標為「記得」或「很熟」後，自動開放下一批。
+            </p>
+          )}
         </div>
         <div className="today-ring">
           <strong>{completedInBatch}</strong>

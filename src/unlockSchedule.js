@@ -13,7 +13,7 @@ import { PERIODS, currentRocPeriod } from "./data.js";
 
 export const PLAN_START = "2026-07-01";
 export const WEEKLY_QUOTA = { vocabulary: 100, grammar: 15 };
-export const BATCH_SIZE = { vocabulary: 6, grammar: 3 };
+export const BATCH_SIZE = { vocabulary: 5, grammar: 1 };
 
 const DAY_MS = 86400000;
 
@@ -67,14 +67,40 @@ export function unlockedThrough(date = new Date()) {
   return date < new Date(`${PLAN_START}T00:00:00`) ? PERIODS[0] : PERIODS.at(-1);
 }
 
+/**
+ * Which round each grammar pattern belongs to.
+ *
+ * Slicing patterns off the front the way words are sliced put every pattern a
+ * month had into its first rounds: 440 words against 38 patterns meant rounds 1
+ * to 13 carried all the grammar and rounds 14 to 74 carried none. Spacing them
+ * evenly instead — first pattern in the first round, last in the last — keeps a
+ * round to at most one pattern and spreads them over the whole month.
+ *
+ * The batch count is never smaller than the pattern count, so the step is never
+ * below 1 and two patterns can never land in the same round.
+ */
+function grammarRounds(grammarCount, rounds) {
+  const slots = Array.from({ length: rounds }, () => []);
+  if (!grammarCount || !rounds) return slots;
+  const step = grammarCount > 1 ? (rounds - 1) / (grammarCount - 1) : 0;
+  for (let index = 0; index < grammarCount; index += 1) {
+    const round = grammarCount > 1 ? Math.round(index * step) : 0;
+    slots[Math.min(rounds - 1, round)].push(index);
+  }
+  return slots;
+}
+
+// A round is 5 words and 1 grammar pattern. A month holds far more words than
+// patterns, so the rounds between two patterns are words only.
 export function buildDailyBatches(vocabulary, grammar) {
   const count = Math.max(
     Math.ceil(vocabulary.length / BATCH_SIZE.vocabulary),
     Math.ceil(grammar.length / BATCH_SIZE.grammar),
   );
+  const slots = grammarRounds(grammar.length, count);
   return Array.from({ length: count }, (_, index) => [
     ...vocabulary.slice(index * BATCH_SIZE.vocabulary, (index + 1) * BATCH_SIZE.vocabulary),
-    ...grammar.slice(index * BATCH_SIZE.grammar, (index + 1) * BATCH_SIZE.grammar),
+    ...slots[index].map((position) => grammar[position]),
   ]).filter((batch) => batch.length);
 }
 

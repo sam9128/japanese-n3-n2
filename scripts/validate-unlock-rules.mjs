@@ -31,12 +31,21 @@ const makeItems = (prefix, count) =>
   Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i + 1}` }));
 const masterAll = () => true;
 const masterNone = () => false;
-const masterFirst = (n) => {
-  const ids = new Set();
-  return (item) => {
-    const index = Number(item.id.split("-").pop());
-    return item.id.startsWith("v") ? index <= n.v : index <= n.g;
-  };
+const masterFirst = (n) => (item) => {
+  const index = Number(item.id.split("-").pop());
+  return item.id.startsWith("v") ? index <= n.v : index <= n.g;
+};
+// Grammar is spread across the month rather than sliced off the front, so "the
+// first N batches are done" is no longer a count of words and a count of
+// patterns. Ask the batches themselves which cards that is.
+const masterFirstBatches = (vocabulary, grammar, batchCount) => {
+  const done = new Set(
+    buildDailyBatches(vocabulary, grammar)
+      .slice(0, batchCount)
+      .flat()
+      .map((card) => card.id),
+  );
+  return (item) => done.has(item.id);
 };
 
 // ---------------------------------------------------------------- week anchor
@@ -83,16 +92,47 @@ check("allowance never opens more than the month has unlocked", () => {
 
 check("week 1 caps the first month at one week of material", () => {
   const batches = allowedBatchCount(400, 60, d("2026-07-01"));
-  assert.equal(batches, Math.max(Math.ceil(100 / 6), Math.ceil(15 / 3)));
+  assert.equal(
+    batches,
+    Math.max(
+      Math.ceil(100 / BATCH_SIZE.vocabulary),
+      Math.ceil(15 / BATCH_SIZE.grammar),
+    ),
+  );
 });
 
 // ---------------------------------------------------------------- batching
-check("a batch is 6 vocabulary plus 3 grammar", () => {
-  const batches = buildDailyBatches(makeItems("v", 12), makeItems("g", 6));
-  assert.equal(batches.length, 2);
-  assert.equal(batches[0].length, 9);
-  assert.equal(batches[0].filter((x) => x.id.startsWith("v")).length, 6);
-  assert.equal(batches[0].filter((x) => x.id.startsWith("g")).length, 3);
+check("a round is 5 words and 1 grammar pattern", () => {
+  const batches = buildDailyBatches(makeItems("v", 440), makeItems("g", 38));
+  assert.equal(batches.length, 88, "88 rounds of 5 words covers 440 words");
+  assert.equal(batches[0].length, 6);
+  assert.equal(batches[0].filter((x) => x.id.startsWith("v")).length, 5);
+  assert.equal(batches[0].filter((x) => x.id.startsWith("g")).length, 1);
+  const perRound = batches.map(
+    (batch) => batch.filter((x) => x.id.startsWith("g")).length,
+  );
+  assert.equal(Math.max(...perRound), 1, "never two patterns in one round");
+  assert.equal(
+    perRound.reduce((sum, n) => sum + n, 0),
+    38,
+    "every pattern the month unlocked is still dealt out",
+  );
+});
+
+// The fault this replaced: slicing patterns off the front like words gave rounds
+// 1-13 all 38 patterns and rounds 14-74 none.
+check("grammar reaches the end of the month, not just the start", () => {
+  const batches = buildDailyBatches(makeItems("v", 440), makeItems("g", 38));
+  const rounds = batches
+    .map((batch, index) => (batch.some((x) => x.id.startsWith("g")) ? index : -1))
+    .filter((index) => index >= 0);
+  assert.equal(rounds[0], 0, "first pattern in the first round");
+  assert.equal(rounds.at(-1), batches.length - 1, "last pattern in the last round");
+  const gaps = rounds.slice(1).map((round, i) => round - rounds[i]);
+  assert.ok(
+    Math.max(...gaps) - Math.min(...gaps) <= 1,
+    `patterns should be evenly spaced, gaps were ${[...new Set(gaps)].join()}`,
+  );
 });
 
 // ---------------------------------------------------------------- planToday
@@ -105,31 +145,31 @@ check("nothing mastered yet: study the first batch", () => {
   });
   assert.equal(plan.batchIndex, 0);
   assert.equal(plan.reviewMode, false);
-  assert.equal(plan.cards.length, 9);
+  assert.equal(plan.cards.length, 6);
 });
 
 check("finishing a batch opens the next one immediately", () => {
   const plan = planToday({
     vocabulary: makeItems("v", 400),
     grammar: makeItems("g", 30),
-    isMastered: masterFirst({ v: 6, g: 3 }),
+    isMastered: masterFirstBatches(makeItems("v", 400), makeItems("g", 30), 1),
     date: d("2026-07-01"),
   });
   assert.equal(plan.completedBatches, 1);
   assert.equal(plan.reviewMode, false, "still under the weekly cap");
-  assert.equal(plan.cards[0].id, "v-7", "second batch starts at the 7th word");
+  assert.equal(plan.cards[0].id, "v-6", "second round starts at the 6th word");
 });
 
 check("hitting the weekly cap switches to review mode, not more material", () => {
-  // Week 1 allows 100 words = 17 batches. Master exactly that much.
+  // Week 1 allows 100 words = 20 rounds of 5. Master exactly that much.
   const plan = planToday({
     vocabulary: makeItems("v", 400),
     grammar: makeItems("g", 60),
-    isMastered: masterFirst({ v: 17 * 6, g: 17 * 3 }),
+    isMastered: masterFirstBatches(makeItems("v", 400), makeItems("g", 60), 20),
     date: d("2026-07-01"),
   });
-  assert.equal(plan.allowedBatches, 17);
-  assert.equal(plan.completedBatches, 17);
+  assert.equal(plan.allowedBatches, 20);
+  assert.equal(plan.completedBatches, 20);
   assert.equal(plan.reviewMode, true);
   assert.equal(plan.reviewReason, "week");
   assert.equal(plan.cards.length, 0, "no new cards past the cap");
@@ -139,13 +179,13 @@ check("the same progress is no longer capped once Monday arrives", () => {
   const args = {
     vocabulary: makeItems("v", 400),
     grammar: makeItems("g", 60),
-    isMastered: masterFirst({ v: 17 * 6, g: 17 * 3 }),
+    isMastered: masterFirstBatches(makeItems("v", 400), makeItems("g", 60), 20),
   };
   const sunday = planToday({ ...args, date: d("2026-07-05") });
   const monday = planToday({ ...args, date: d("2026-07-06") });
   assert.equal(sunday.reviewMode, true);
   assert.equal(monday.reviewMode, false, "week 2 allowance lifts the cap");
-  assert.equal(monday.cards.length, 9, "new material without any user action");
+  assert.equal(monday.cards.length, 6, "new material without any user action");
 });
 
 check("clearing the whole month reports the month reason, not the week", () => {
@@ -165,11 +205,11 @@ check("falling behind does not forfeit the missed weeks", () => {
   const plan = planToday({
     vocabulary: makeItems("v", 400),
     grammar: makeItems("g", 60),
-    isMastered: masterFirst({ v: 6, g: 3 }),
+    isMastered: masterFirstBatches(makeItems("v", 400), makeItems("g", 60), 1),
     date: d("2026-07-27"),
   });
   assert.equal(plan.reviewMode, false);
-  assert.equal(plan.allowedBatches, Math.ceil(400 / 6));
+  assert.equal(plan.allowedBatches, Math.ceil(400 / BATCH_SIZE.vocabulary));
 });
 
 // ---------------------------------------------------------------- month gate
