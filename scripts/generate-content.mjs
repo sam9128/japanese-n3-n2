@@ -28,9 +28,12 @@ const periods = ["115-07", "115-08", "115-09", "115-10", "115-11", "115-12", "11
 // derived from the levels themselves; see halfYearPeriod.
 //
 // 115-11 and 115-12 hold no new material on purpose: 115/11 is the five-mock
-// month and the sitting is 115/12/06, so both are revision only.
+// month and the sitting is 115/12/06, so both are revision only. 116-06 is the same
+// kind of month at the other end — the plan calls it 總複習與結案, and finishing the
+// words a month early is what lets it be one, and what puts the 4,000th word in
+// 116/05 where the plan asks for it.
 const N3_MONTHS = 4; // 115-07..115-10.
-const N2_MONTHS = 6; // 116-01..116-06.
+const N2_MONTHS = 5; // 116-01..116-05.
 const sigureRefs = {
   vocabulary: {
     N3: "https://www.sigure.tw/learn-japanese/vocabulary/n3/",
@@ -541,12 +544,29 @@ const grammar = makeGrammar();
 const reading = buildReading(periods, spreadPeriod);
 const listening = buildListening(periods, spreadPeriod);
 const catalog = { vocabulary, grammar, reading, listening };
-// 116/04 is the plan's N2 實戰期, so the first N2 mock sits there rather than both
-// landing in the final month; the second stays in 116/06 as the closing rehearsal.
+/*
+ * All of a level's mocks open together, in the month after its last card unlocks.
+ * Until then there is still vocabulary or grammar a full paper could not fairly
+ * test; from then on there is nothing left to learn at that level, so holding the
+ * later papers back only shortens the run-up. This was two hand-written month
+ * strings, and they put three N3 mocks in 115/11 and the other two in 115/12 —
+ * days before the sitting on 115/12/06, and against a plan that asks for all five
+ * in 115/11.
+ *
+ * Reading and listening are deliberately not counted: they run to the last month at
+ * both levels, so waiting for them would mean waiting forever.
+ */
+function mockPeriod(level) {
+  const last = [...vocabulary, ...grammar]
+    .filter((item) => item.level === level)
+    .reduce((latest, item) => Math.max(latest, periods.indexOf(item.unlockPeriod)), -1);
+  if (last < 0) throw new Error(`找不到 ${level} 教材，無法決定模考開放月份`);
+  return periods[Math.min(periods.length - 1, last + 1)];
+}
 const assessmentPlan = [
   ...periods.map((p,i)=>({id:`monthly-${String(i+1).padStart(2,"0")}`,title:`${p.replace("-","/")} 月檢核`,level:i<6?"N3":"N2",period:p,minutes:35,questionCount:20,kind:"monthly"})),
-  ...Array.from({length:5},(_,i)=>({id:`mock-n3-${i+1}`,title:`N3 自編模考 ${i+1}`,level:"N3",period:i<3?"115-11":"115-12",minutes:95,questionCount:30,kind:"mock"})),
-  ...Array.from({length:2},(_,i)=>({id:`mock-n2-${i+1}`,title:`N2 自編模考 ${i+1}`,level:"N2",period:i<1?"116-04":"116-06",minutes:105,questionCount:35,kind:"mock"}))
+  ...Array.from({length:5},(_,i)=>({id:`mock-n3-${i+1}`,title:`N3 自編模考 ${i+1}`,level:"N3",period:mockPeriod("N3"),minutes:95,questionCount:30,kind:"mock"})),
+  ...Array.from({length:2},(_,i)=>({id:`mock-n2-${i+1}`,title:`N2 自編模考 ${i+1}`,level:"N2",period:mockPeriod("N2"),minutes:105,questionCount:35,kind:"mock"}))
 ];
 /*
  * Build them in the order the learner meets them, not in the order they are

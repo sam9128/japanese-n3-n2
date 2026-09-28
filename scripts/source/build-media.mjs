@@ -89,11 +89,14 @@ function interleave(groups, random, lateOnly = new Set()) {
   return placed.sort((a, b) => a.at - b.at).map((entry) => entry.item);
 }
 
-// The N3 sitting is 115/12/06 and the five N3 mocks run in 115/11-12, so every
-// N3 item must be released within the first six months. The split is set a
-// little past halfway because the N3 half has to supply more exam questions:
-// five N3 mocks against two N2 ones.
-const HALF_YEAR = 6;
+// The N3 sitting is 115/12/06 and all five N3 mocks open in 115/11, so every N3 item
+// has to be released by 115/11 — five months, not six. 115/12 is the sitting month and
+// nothing new arrives in it, the same way 115/11 and 115/12 hold no new cards. The
+// split between the halves is set a little past halfway because the N3 half has to
+// supply more exam questions: five N3 mocks against two N2 ones.
+const HALF_YEAR = 6; // where the N2 half begins
+const N3_MEDIA_MONTHS = 5; // 115-07..115-11
+const N2_MEDIA_MONTHS = 6; // 116-01..116-06
 const READING_N3_ITEMS = 28;
 // 72 of the 124 listening items. The N3 half must supply 70 exam questions
 // (six monthly checks at five, five mocks at eight) and every item in it carries
@@ -105,9 +108,10 @@ const LISTENING_N3_ITEMS = 72;
 function halfYearPeriod(periods, index, n3Count, total) {
   const isN3 = index < n3Count;
   const offset = isN3 ? 0 : HALF_YEAR;
+  const months = isN3 ? N3_MEDIA_MONTHS : N2_MEDIA_MONTHS;
   const within = isN3 ? index : index - n3Count;
   const size = isN3 ? n3Count : total - n3Count;
-  return periods[offset + Math.min(HALF_YEAR - 1, Math.floor((within * HALF_YEAR) / size))];
+  return periods[offset + Math.min(months - 1, Math.floor((within * months) / size))];
 }
 
 const SIGURE_READING = "https://www.sigure.tw/quiz/reading/medium/";

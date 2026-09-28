@@ -3,6 +3,7 @@ import { hasChineseMarker } from "./source/chinese-marker.mjs";
 import path from "node:path";
 import {READING_FORMATS,LISTENING_FORMATS,readingFormatFor,listeningFormatFor,READING_TOTAL,LISTENING_TOTAL} from "./source/jlpt-formats.mjs";
 import {PRACTICE_PER_MONTH} from "./source/build-practice.mjs";
+import {DEFAULT_SCHEDULE_SETTINGS} from "../src/scheduleSettings.js";
 const root=path.resolve(import.meta.dirname,"..","public","content");
 const index=JSON.parse(fs.readFileSync(path.join(root,"index.json"),"utf8"));
 const packs=index.periods.map(period=>JSON.parse(fs.readFileSync(path.join(root,"periods",`${period}.json`),"utf8")));
@@ -32,6 +33,14 @@ for(const card of all.grammar){
   const expectedAudio=card.term.replace(/[〜～]/g, "").replace(/[（(][^）)]*[）)]/g, "").trim();
   if(card.audioText!==expectedAudio)throw new Error(`grammar audio does not match pattern: ${card.id}`);
   if(card.audioText===card.examples[0].ja)throw new Error(`grammar pattern audio duplicates example: ${card.id}`);
+}
+// The custom schedule's targets double as their own ceilings, so one that is below
+// what the content holds is a target the learner cannot raise and can never finish.
+// listening stayed at 104 after the bank grew to 124, which reported 100% with twenty
+// groups still unheard.
+for(const [key,target] of Object.entries(DEFAULT_SCHEDULE_SETTINGS.targets)){
+  const shipped=key==="reading"||key==="listening"?all[key].length:index.counts[key];
+  if(target!==shipped)throw new Error(`schedule target for ${key} is ${target}, content holds ${shipped}`);
 }
 // A card must say aloud what it teaches. Speaking the word form let the engine choose
 // its own reading, so 最中(さいちゅう) played as もなか and 仏(ほとけ) as ぶつ.

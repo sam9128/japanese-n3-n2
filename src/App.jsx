@@ -2883,12 +2883,15 @@ function ProgressView({
   );
 }
 
+// The ceiling is whatever the content holds, so it is read from the one place that
+// records it rather than typed again here. This list carried its own copy and kept
+// listening at 104 after the bank grew to 124.
 const SCHEDULE_TARGET_FIELDS = [
-  ["vocabulary", "單字目標", 4000],
-  ["grammar", "文法目標", 240],
-  ["reading", "閱讀篇數", 52],
-  ["listening", "聽力組數", 104],
-];
+  ["vocabulary", "單字目標"],
+  ["grammar", "文法目標"],
+  ["reading", "閱讀篇數"],
+  ["listening", "聽力組數"],
+].map(([key, label]) => [key, label, DEFAULT_SCHEDULE_SETTINGS.targets[key]]);
 
 function ScheduleSettingsPanel({
   scheduleSettings,

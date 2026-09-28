@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-09-28T09:15:17.181Z",
+  "generatedAt": "2026-09-28T09:32:02.870Z",
   "contentVersion": "2026-08-jmdict-rebuild",
-  "contentHash": "fd02f7b8cfd17c60",
+  "contentHash": "32b020f23654b0e0",
   "reissuedIds": [
     "vocab-0007",
     "vocab-0016",
@@ -2176,28 +2176,28 @@
     },
     {
       "period": "116-01",
-      "vocabulary": 2135,
-      "grammar": 166
+      "vocabulary": 2209,
+      "grammar": 169
     },
     {
       "period": "116-02",
-      "vocabulary": 2508,
-      "grammar": 181
+      "vocabulary": 2657,
+      "grammar": 187
     },
     {
       "period": "116-03",
-      "vocabulary": 2881,
-      "grammar": 196
+      "vocabulary": 3105,
+      "grammar": 205
     },
     {
       "period": "116-04",
-      "vocabulary": 3254,
-      "grammar": 211
+      "vocabulary": 3553,
+      "grammar": 223
     },
     {
       "period": "116-05",
-      "vocabulary": 3627,
-      "grammar": 226
+      "vocabulary": 4000,
+      "grammar": 240
     },
     {
       "period": "116-06",
