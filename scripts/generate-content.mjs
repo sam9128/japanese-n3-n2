@@ -541,11 +541,27 @@ const grammar = makeGrammar();
 const reading = buildReading(periods, spreadPeriod);
 const listening = buildListening(periods, spreadPeriod);
 const catalog = { vocabulary, grammar, reading, listening };
-const assessments = [
-  ...periods.map((p,i)=>makeAssessment(`monthly-${String(i+1).padStart(2,"0")}`,`${p.replace("-","/")} 月檢核`, i<6?"N3":"N2",p,35,20,"monthly",catalog)),
-  ...Array.from({length:5},(_,i)=>makeAssessment(`mock-n3-${i+1}`,`N3 自編模考 ${i+1}`,"N3",i<3?"115-11":"115-12",95,30,"mock",catalog)),
-  ...Array.from({length:2},(_,i)=>makeAssessment(`mock-n2-${i+1}`,`N2 自編模考 ${i+1}`,"N2","116-06",105,35,"mock",catalog))
+// 116/04 is the plan's N2 實戰期, so the first N2 mock sits there rather than both
+// landing in the final month; the second stays in 116/06 as the closing rehearsal.
+const assessmentPlan = [
+  ...periods.map((p,i)=>({id:`monthly-${String(i+1).padStart(2,"0")}`,title:`${p.replace("-","/")} 月檢核`,level:i<6?"N3":"N2",period:p,minutes:35,questionCount:20,kind:"monthly"})),
+  ...Array.from({length:5},(_,i)=>({id:`mock-n3-${i+1}`,title:`N3 自編模考 ${i+1}`,level:"N3",period:i<3?"115-11":"115-12",minutes:95,questionCount:30,kind:"mock"})),
+  ...Array.from({length:2},(_,i)=>({id:`mock-n2-${i+1}`,title:`N2 自編模考 ${i+1}`,level:"N2",period:i<1?"116-04":"116-06",minutes:105,questionCount:35,kind:"mock"}))
 ];
+/*
+ * Build them in the order the learner meets them, not in the order they are
+ * listed. No exam question may reuse a source, and a paper may only draw on
+ * material unlocked by its own month, so whoever is built first gets first pick
+ * of a shared bank. Listing every monthly check before the mocks meant the checks
+ * for 116/05 and 116/06 took N2 listening before the mock in 116/04 — a paper the
+ * learner sits two months earlier — and the earlier paper was left short. Sorting
+ * by period makes the draw order match the calendar. The sort is stable, so
+ * papers inside one month keep their listed order.
+ */
+const assessments = assessmentPlan
+  .slice()
+  .sort((a,b)=>periods.indexOf(a.period)-periods.indexOf(b.period))
+  .map((row)=>makeAssessment(row.id,row.title,row.level,row.period,row.minutes,row.questionCount,row.kind,catalog));
 
 function auditGeneratedQuestions() {
   const hasJapanese=(value)=>/[\u3040-\u30ff\u3400-\u9fff]/.test(value||"");
