@@ -30,7 +30,25 @@ pnpm run generate:content
 pnpm run validate:content
 ```
 
-生成器預期詞彙來源位於專案上層 `tmp/language-learning-decks/japanese/`。網站正式執行只讀取已生成的月份分包，不依賴該暫存資料夾。
+生成器讀取專案上層 `tmp/` 底下兩份只在重新產生時才需要的外部資料，兩者都不進版控
+（見上層 `.gitignore`），網站正式執行也不依賴它們——只讀已生成的月份分包：
+
+| 路徑 | 內容 | 取得方式 |
+|---|---|---|
+| `tmp/jmdict/jmdict-index.json` | JMdict 的詞形、假名讀音、詞性與英文語義 | 自 <https://www.edrdg.org/jmdict/j_jmdict.html> 下載 `JMdict_e.gz`，以 `tmp/jmdict/build-index.mjs` 建索引 |
+| `tmp/jmdict/apkg-readings.json` | 詞形 → 讀音，來自 N3／N2 総まとめ 牌組 | 由上層的兩個 `.apkg` 匯出 |
+| `tmp/language-learning-decks/japanese/` | CEFR 分級與例句 | clone <https://github.com/vbvss199/Language-Learning-decks> |
+
+重建整個單字骨幹（詞形、讀音、詞性、英文語義）是另一支腳本，只在來源換版時才需要執行；
+它會重寫 `scripts/source/vocab-authority.json`，並把換過字的 id 記進 `vocab-reissued-ids.json`，
+App 會據此清除那些卡片的學習紀錄：
+
+```bash
+node scripts/rebuild-vocab-authority.mjs
+```
+
+手動審定過的讀音（詞表與 JMdict 不一致的那幾條）放在 `scripts/source/vocab-reading-review.json`，
+重建時會自動套回，`validate-content.mjs` 也會重算把關。
 
 例句繁體中文直譯保存在 `scripts/source/example-translations-zh.json`，網站執行時不會連線翻譯服務。新增例句後可執行 `pnpm run translate:examples` 補齊缺漏，再重新產生與驗證教材；此命令只傳送公開教材例句，不傳送使用者資料。
 

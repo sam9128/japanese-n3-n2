@@ -578,21 +578,7 @@ a {
   background: none;
   color: var(--green);
   cursor: pointer;
-}
-.card-main {
-  min-height: 365px;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  padding: 32px;
-  cursor: pointer;
-}
-.card-main h2 {
-  font: 700 clamp(38px, 7vw, 74px) "Noto Serif JP";
-  margin: 0;
-  color: #183828;
-}
-.reading {
+}.reading {
   letter-spacing: 0.18em;
   color: #728077;
 }
@@ -615,23 +601,7 @@ a {
   padding: 10px 22px;
   margin-top: 24px;
   cursor: pointer;
-}
-.rating-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border-top: 1px solid var(--line);
-}
-.rating-row button {
-  border: 0;
-  border-right: 1px solid var(--line);
-  background: #f8f9f6;
-  padding: 15px 4px;
-  cursor: pointer;
-}
-.rating-row button:hover {
-  background: var(--pale);
-}
-.lesson-card footer {
+}.lesson-card footer {
   display: flex;
   justify-content: space-between;
   padding: 15px 20px;
@@ -2208,23 +2178,7 @@ a {
   }
   .lesson-top button {
     font-size: 11px;
-  }
-  .card-main {
-    min-height: 218px;
-    padding: 18px 14px;
-    align-content: center;
-  }
-  .card-main.is-revealed {
-    max-height: min(42vh, 330px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    align-content: start;
-  }
-  .card-main h2 {
-    font-size: clamp(38px, 12vw, 47px);
-    line-height: 1.12;
-  }
-  .reading {
+  }  .reading {
     margin: 8px 0;
     font-size: 13px;
   }
@@ -2255,12 +2209,7 @@ a {
     padding: 8px 10px;
     font-size: 12px;
     line-height: 1.55;
-  }
-  .rating-row button {
-    font-size: 12px;
-    padding: 12px 2px;
-  }
-  .lesson-card footer {
+  }  .lesson-card footer {
     padding: 11px 14px;
   }
   .study-quiz-main {
@@ -2322,14 +2271,7 @@ a {
   }
   .today-view .daily-pace {
     padding: 9px 11px;
-  }
-  .card-main {
-    min-height: 190px;
-  }
-  .card-main.is-revealed {
-    max-height: min(40vh, 280px);
-  }
-}
+  }}
 @media (max-width: 700px) {
   .toolbar {
     display: grid;
