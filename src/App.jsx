@@ -2733,6 +2733,20 @@ function ProgressView({
   const weak = Object.values(store.progress).filter(
     (x) => x.rating === "hard",
   ).length;
+  // Distinct papers finished, against however many the plan holds. This counted
+  // submissions against a hand-written 19, so retaking one check moved a progress
+  // figure that no new material had been covered for. Ids with no matching
+  // assessment are dropped too, so a result left over from removed material
+  // cannot inflate it either.
+  const assessmentProgress = useMemo(() => {
+    const existing = new Set(data.assessments.map((item) => item.id));
+    const done = new Set(
+      store.results
+        .map((result) => result.assessmentId)
+        .filter((id) => existing.has(id)),
+    );
+    return { done: done.size, total: existing.size };
+  }, [data.assessments, store.results]);
   function exportCsv() {
     // One row per period, each with that period's own figures rather than the
     // selected month's rate repeated down the column.
@@ -2799,9 +2813,9 @@ function ProgressView({
           <small>評為「有點難」</small>
         </article>
         <article>
-          <span>檢核完成</span>
-          <strong>{store.results.length}</strong>
-          <small>/ 19 次</small>
+          <span>已完成考卷</span>
+          <strong>{assessmentProgress.done}</strong>
+          <small>/ {assessmentProgress.total} 份</small>
         </article>
       </div>
       <div className="report-card">
