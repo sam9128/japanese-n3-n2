@@ -1,9 +1,13 @@
 const DB_NAME = "nihongo-stairs";
-const DB_VERSION = 2;
+// 3 adds drillResults, which records the 專項強化集 questions the learner has
+// cleared. openDatabase creates any store missing from STORES, but only inside
+// onupgradeneeded, so a new store needs the version to move.
+const DB_VERSION = 3;
 export const STORES = [
   "cardProgress",
   "studyEvents",
   "assessmentResults",
+  "drillResults",
   "reports",
   "settings",
 ];

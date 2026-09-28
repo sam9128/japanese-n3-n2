@@ -20,6 +20,8 @@ import { getJapaneseVoices, speakJapanese, stopSpeech } from "./speech";
 import { calculateDailyProgress } from "./dailyProgress";
 import { planToday, unlockedThrough as unlockedThroughFor } from "./unlockSchedule";
 import { studyBalance } from "./studyBalance";
+import { readingSpeed } from "./readingSpeed";
+import { weakQuestions, SECTIONS } from "./weakQuestions";
 import { buildMonthlyReport, reportablePeriods } from "./monthlyReport";
 import DriveSyncPanel from "./DriveSyncPanel";
 import { buildQuizQuestion, buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
@@ -424,16 +426,21 @@ function useLearningStore() {
   const [progress, setProgress] = useState({});
   const [events, setEvents] = useState([]);
   const [results, setResults] = useState([]);
+  // Questions cleared in the 專項強化集. Kept apart from assessmentResults because a
+  // drill is not a sitting: it has no score and no paper.
+  const [drills, setDrills] = useState([]);
   const [ready, setReady] = useState(false);
   const load = useCallback(async () => {
-    const [savedProgress, savedEvents, savedResults] = await Promise.all([
+    const [savedProgress, savedEvents, savedResults, savedDrills] = await Promise.all([
       getAll("cardProgress"),
       getAll("studyEvents"),
       getAll("assessmentResults"),
+      getAll("drillResults"),
     ]);
     setProgress(Object.fromEntries(savedProgress.map((x) => [x.id, x])));
     setEvents(savedEvents);
     setResults(savedResults);
+    setDrills(savedDrills);
   }, []);
   useEffect(() => {
     migrateLegacyProgress()
@@ -553,10 +560,27 @@ function useLearningStore() {
     await put("assessmentResults", result);
     setResults((old) => [...old.filter((x) => x.id !== result.id), result]);
   }
+  // A drill answer. Only a correct one clears the question out of the set; a wrong
+  // one is still recorded, so the count of attempts is honest.
+  async function recordDrillAnswer(questionId, examId, correct) {
+    const previous = drills.find((row) => row.id === questionId);
+    const record = {
+      ...previous,
+      id: questionId,
+      examId,
+      attempts: (previous?.attempts || 0) + 1,
+      correct: Boolean(previous?.correct) || correct,
+      updatedAt: new Date().toISOString(),
+    };
+    await put("drillResults", record);
+    setDrills((old) => [...old.filter((row) => row.id !== questionId), record]);
+  }
   return {
     progress,
     events,
     results,
+    drills,
+    recordDrillAnswer,
     ready,
     rate,
     recordQuizAnswer,
@@ -1693,6 +1717,16 @@ function MediaView({
   const elapsed =
     elapsedBase +
     (startedAt ? Math.max(0, Math.floor((clock - startedAt) / 1000)) : 0);
+  // Start the clock when the item opens. It used to wait for the 計時 button, which
+  // a learner presses after they have started reading, if at all — so the time was
+  // either missing or wrong, and 強化長文解析速度 had nothing to measure. 暫停 still
+  // works; this only fires when the item changes.
+  const timedItem = useRef(null);
+  useEffect(() => {
+    if (!item?.id || timedItem.current === item.id) return;
+    timedItem.current = item.id;
+    updatePage((current) => ({ ...current, elapsed: 0, startedAt: Date.now() }));
+  }, [item?.id, updatePage]);
   const readingCount = data.reading.filter((x) =>
     isUnlocked(x, activePeriod),
   ).length;
@@ -1801,7 +1835,17 @@ function MediaView({
     const allCorrect = item.questions.every(
       (q) => nextAnswers[q.id] === q.answer,
     );
-    store.rate(item, allCorrect ? "good" : "hard", { replays });
+    // chars only for 読解: 字/分 is the comparable figure across a short notice and a
+    // long article, and a 聴解 script's length says nothing about how long it took.
+    const chars =
+      type === "reading" ? (item.content || "").replace(/\s+/g, "").length : 0;
+    store.rate(item, allCorrect ? "good" : "hard", {
+      replays,
+      seconds: elapsed,
+      ...(chars ? { chars } : {}),
+    });
+    // Freeze the clock on the number that was recorded.
+    updatePage((current) => ({ ...current, elapsed, startedAt: null }));
   };
   const goToMediaItem = (nextIndex) =>
     updatePage((current) => ({
@@ -2220,6 +2264,60 @@ function MockView({
       );
     return byExam;
   }, [store.results]);
+  // 專項強化集. The set shrinks as questions are cleared, but the drill in progress
+  // reads from the unfiltered map: clearing the question you are looking at must not
+  // pull it out from under you.
+  const clearedIds = useMemo(
+    () => new Set((store.drills || []).filter((row) => row.correct).map((row) => row.id)),
+    [store.drills],
+  );
+  const weak = useMemo(
+    () => weakQuestions(data.assessments, store.results, clearedIds),
+    [data.assessments, store.results, clearedIds],
+  );
+  const weakById = useMemo(
+    () =>
+      new Map(
+        weakQuestions(data.assessments, store.results, new Set()).wrong.map((row) => [
+          row.question.id,
+          row,
+        ]),
+      ),
+    [data.assessments, store.results],
+  );
+  const drill = pageState.drill;
+  function startDrill() {
+    const keys = weak.wrong.map((row) => row.question.id);
+    if (!keys.length) return;
+    updatePage((current) => ({
+      ...current,
+      examId: null,
+      answers: {},
+      startedAt: null,
+      review: null,
+      drill: { keys, index: 0, picked: {} },
+      scrollY: 0,
+    }));
+    window.scrollTo(0, 0);
+  }
+  async function answerDrill(row, choice) {
+    updatePage((current) => ({
+      ...current,
+      drill: {
+        ...current.drill,
+        picked: { ...(current.drill?.picked || {}), [row.question.id]: choice },
+      },
+    }));
+    await store.recordDrillAnswer(
+      row.question.id,
+      row.examId,
+      choice === row.question.answer,
+    );
+  }
+  function leaveDrill() {
+    updatePage((current) => ({ ...current, drill: null, scrollY: 0 }));
+    window.scrollTo(0, 0);
+  }
   const exam = data.assessments.find((item) => item.id === pageState.examId);
   const answers = pageState.answers || {};
   const review = pageState.review;
@@ -2367,6 +2465,106 @@ function MockView({
       scrollY: 0,
     }));
     window.scrollTo(0, 0);
+  }
+  if (drill?.keys?.length) {
+    const keys = drill.keys;
+    const index = Math.min(Number(drill.index) || 0, keys.length - 1);
+    const row = weakById.get(keys[index]);
+    const picked = drill.picked || {};
+    const answered = Object.keys(picked).length;
+    const clearedNow = keys.filter(
+      (key) => picked[key] !== undefined && picked[key] === weakById.get(key)?.question.answer,
+    ).length;
+    const finished = index >= keys.length - 1 && picked[keys[index]] !== undefined;
+    const choice = row ? picked[row.question.id] : undefined;
+    return (
+      <section>
+        <PageTitle
+          eyebrow="DRILL"
+          title="專項強化集"
+          text="這些是月檢核與模考答錯的題目；答對一次就從這份清單移除。"
+        />
+        <div className="drill-bar">
+          <strong>
+            第 {index + 1} / {keys.length} 題
+          </strong>
+          <span>
+            本次已答 {answered} · 答對 {clearedNow}
+          </span>
+          <button type="button" onClick={leaveDrill}>
+            結束練習
+          </button>
+        </div>
+        {!row ? (
+          <Empty text="這一題的來源教材已不存在，請結束練習後重新開始。" />
+        ) : (
+          <article className="drill-card">
+            <span>
+              {row.section} · {row.examTitle}
+            </span>
+            <h3>{row.question.prompt}</h3>
+            {row.question.passage && (
+              <p className="exam-passage" lang="ja">
+                {row.question.passage}
+              </p>
+            )}
+            {row.question.audioText && (
+              <ExampleAudio
+                text={row.question.audioText}
+                settings={settings}
+                label="聽力音檔"
+              />
+            )}
+            <ol className="drill-options">
+              {row.question.options.map((option, optionIndex) => (
+                <li key={`${option}-${optionIndex}`}>
+                  <button
+                    type="button"
+                    disabled={choice !== undefined}
+                    className={
+                      choice === undefined
+                        ? ""
+                        : optionIndex === row.question.answer
+                          ? "correct"
+                          : optionIndex === choice
+                            ? "wrong"
+                            : ""
+                    }
+                    onClick={() => answerDrill(row, optionIndex)}
+                  >
+                    {option}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            {choice !== undefined && (
+              <div className="drill-feedback">
+                <strong className={choice === row.question.answer ? "pass" : "fail"}>
+                  {choice === row.question.answer
+                    ? "答對了，已從強化集移除"
+                    : `再答錯一次也沒關係，這題會留在強化集。上次你選的是第 ${row.picked + 1} 個`}
+                </strong>
+                <p>中文解析：{row.question.explanationZh}</p>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() =>
+                    finished
+                      ? leaveDrill()
+                      : updatePage((current) => ({
+                          ...current,
+                          drill: { ...current.drill, index: index + 1 },
+                        }))
+                  }
+                >
+                  {finished ? "完成練習" : "下一題"}
+                </button>
+              </div>
+            )}
+          </article>
+        )}
+      </section>
+    );
   }
   if (review && reviewExam) {
     const reviewQuestions = reviewExam.questions;
@@ -2610,6 +2808,33 @@ function MockView({
         title="月檢核與模考"
         text="全部為自編題目；官方資源只提供題型參考連結。"
       />
+      <div className="week-card drill-summary">
+        <span>專項強化集</span>
+        {weak.total ? (
+          <>
+            <strong>錯題 {weak.total} 題</strong>
+            <p>
+              {SECTIONS.filter((section) => weak.bySection[section]).map(
+                (section) => `${section} ${weak.bySection[section]}`,
+              ).join("　·　")}
+              {weak.unanswered
+                ? `（另有 ${weak.unanswered} 題未作答，不列入錯題）`
+                : ""}
+            </p>
+            <button className="primary" type="button" onClick={startDrill}>
+              開始練習
+            </button>
+          </>
+        ) : (
+          <>
+            <strong>目前沒有待練習的錯題</strong>
+            <p>
+              月檢核與模考答錯的題目會自動集中到這裡；答對一次就移除。
+              {weak.unanswered ? `目前有 ${weak.unanswered} 題未作答。` : ""}
+            </p>
+          </>
+        )}
+      </div>
       <PeriodPicker
         viewPeriod={activePeriod}
         setViewPeriod={setViewPeriod}
@@ -2701,6 +2926,78 @@ function MockView({
         JLPT 官方題型與著作權說明 ↗
       </a>
     </section>
+  );
+}
+
+/**
+ * 長文速度 — the plan's 116/05 line asks for speed and accuracy, and only accuracy
+ * was ever visible. Speed needs a history to mean anything, so the card leads with
+ * the average and says whether the later half of the runs is faster than the earlier.
+ */
+function ReadingSpeedCard({ events }) {
+  const speed = useMemo(() => readingSpeed(events), [events]);
+  if (!speed.count)
+    return (
+      <div className="week-card reading-speed">
+        <span>長文速度</span>
+        <strong>還沒有計時紀錄</strong>
+        <p>
+          在閱讀聽力頁讀完一篇並答完題目就會記下用時；累積四篇之後這裡會顯示速度有沒有變快。
+        </p>
+      </div>
+    );
+  const trendText = {
+    faster: `比先前快 ${speed.changePercent}%`,
+    slower: `比先前慢 ${Math.abs(speed.changePercent)}%`,
+    steady: "與先前持平",
+    unknown: `再讀 ${4 - speed.count} 篇就能看出趨勢`,
+  }[speed.trend];
+  return (
+    <div className="week-card reading-speed">
+      <span>長文速度</span>
+      <strong>
+        平均 {speed.averageCpm.toLocaleString()} 字／分 · {trendText}
+      </strong>
+      <div className="speed-stats">
+        <div>
+          <b>{speed.fastestCpm.toLocaleString()}</b>
+          <small>最快 字／分</small>
+        </div>
+        <div>
+          <b>{speed.accuracy}%</b>
+          <small>全對比例</small>
+        </div>
+        <div>
+          <b>{speed.count}</b>
+          <small>計時篇數</small>
+        </div>
+        {speed.hasTrend && (
+          <div>
+            <b>
+              {speed.earlierCpm} → {speed.laterCpm}
+            </b>
+            <small>前半 → 後半</small>
+          </div>
+        )}
+      </div>
+      <ol className="speed-runs">
+        {speed.runs.slice(-6).reverse().map((run) => (
+          <li key={run.id}>
+            <i
+              style={{
+                width: `${Math.round((run.cpm / Math.max(1, speed.fastestCpm)) * 100)}%`,
+              }}
+              className={run.allCorrect ? "correct" : ""}
+            />
+            <em>{run.cpm.toLocaleString()} 字／分</em>
+            <small>
+              {run.chars.toLocaleString()} 字 · {examClock(run.seconds)} ·{" "}
+              {run.allCorrect ? "全對" : "有錯"}
+            </small>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -2796,6 +3093,7 @@ function ProgressView({
         text="每次練習都只保存在這台裝置；可輸出 CSV 或直接列印。"
       />
       <DailyPaceCard pace={dailyPace} compact />
+      <ReadingSpeedCard events={store.events} />
       <div className="metric-grid">
         <article>
           <span>已有學習紀錄</span>

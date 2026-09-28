@@ -1268,6 +1268,161 @@ a {
 /* Past papers, listed under the card that produced them. Rows, not the outlined
    green buttons the rest of the card uses — these are a log to scan, and three of
    those buttons stacked would read as three ways to start the exam. */
+/* 長文速度 — the bar is read against the fastest run, so it answers "is this one
+   of my quicker reads" rather than asking the reader to compare raw numbers. */
+.speed-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.speed-stats b {
+  display: block;
+  font: 700 19px "Noto Serif JP";
+}
+.speed-stats small {
+  font-size: 10px;
+  color: #6c776f;
+  letter-spacing: 0.06em;
+}
+.speed-runs {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+.speed-runs li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 12px;
+  position: relative;
+  padding: 5px 9px;
+  background: #fbfcfb;
+  border: 1px solid var(--line);
+}
+.speed-runs i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #eef2ef;
+  z-index: 0;
+}
+.speed-runs i.correct {
+  background: #e7efe9;
+}
+.speed-runs em,
+.speed-runs small {
+  position: relative;
+  z-index: 1;
+  font-style: normal;
+}
+.speed-runs em {
+  font: 600 13px inherit;
+}
+.speed-runs small {
+  font-size: 10px;
+  color: #6c776f;
+}
+
+/* 專項強化集 */
+.drill-summary p {
+  font-size: 12px;
+  color: #6c776f;
+  margin: 4px 0 10px;
+}
+.drill-bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  max-width: 800px;
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  background: var(--green);
+  color: #fff;
+}
+.drill-bar span {
+  font-size: 12px;
+  opacity: 0.88;
+}
+.drill-bar button {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: transparent;
+  color: #fff;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.drill-card {
+  max-width: 800px;
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 22px;
+}
+.drill-card > span {
+  font-size: 10px;
+  color: var(--moss);
+  letter-spacing: 0.12em;
+}
+.drill-card h3 {
+  font: 700 18px "Noto Serif JP";
+  margin: 6px 0 12px;
+}
+.drill-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.drill-options button {
+  width: 100%;
+  text-align: left;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+}
+.drill-options button:not(:disabled):hover {
+  border-color: var(--green);
+}
+.drill-options button.correct {
+  border-color: var(--green);
+  background: #eef4f0;
+}
+.drill-options button.wrong {
+  border-color: #b4553f;
+  background: #f7eeeb;
+}
+.drill-feedback {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.drill-feedback strong.pass {
+  color: var(--green);
+}
+.drill-feedback strong.fail {
+  color: #b4553f;
+}
+.drill-feedback p {
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+@media (max-width: 760px) {
+  /* One column on a phone: the label, the count and the 結束練習 button each get
+     a full-width row rather than being squeezed side by side. */
+  .drill-bar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .drill-card {
+    padding: 16px;
+  }
+}
 .attempt-log {
   margin-top: 16px;
   border-top: 1px solid var(--line);

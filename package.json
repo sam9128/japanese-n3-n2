@@ -24,7 +24,9 @@
     "validate:monthly-report": "node scripts/validate-monthly-report.mjs",
     "validate:sw-content": "node scripts/validate-sw-content.mjs",
     "validate:study-rating": "node scripts/validate-study-rating.mjs",
-    "validate:study-balance": "node scripts/validate-study-balance.mjs"
+    "validate:study-balance": "node scripts/validate-study-balance.mjs",
+    "validate:reading-speed": "node scripts/validate-reading-speed.mjs",
+    "validate:weak-questions": "node scripts/validate-weak-questions.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

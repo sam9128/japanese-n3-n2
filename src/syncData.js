@@ -2,6 +2,7 @@ export const SNAPSHOT_STORES = [
   "cardProgress",
   "studyEvents",
   "assessmentResults",
+  "drillResults",
   "reports",
   "settings",
 ];
