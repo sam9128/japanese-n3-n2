@@ -26,7 +26,8 @@
     "validate:study-rating": "node scripts/validate-study-rating.mjs",
     "validate:study-balance": "node scripts/validate-study-balance.mjs",
     "validate:reading-speed": "node scripts/validate-reading-speed.mjs",
-    "validate:weak-questions": "node scripts/validate-weak-questions.mjs"
+    "validate:weak-questions": "node scripts/validate-weak-questions.mjs",
+    "validate:assessment-stats": "node scripts/validate-assessment-stats.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

@@ -1327,6 +1327,92 @@ a {
   color: #6c776f;
 }
 
+/* 檢核與模考分析. The section bars answer "where am I losing marks"; the column
+   chart answers "am I getting better", so the two are read differently and are
+   drawn differently. */
+.section-bars {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.section-bars li {
+  display: grid;
+  grid-template-columns: 82px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.section-bars em {
+  font: 600 12px inherit;
+  font-style: normal;
+}
+.section-bars i {
+  display: block;
+  height: 9px;
+  background: #eef2ef;
+  border: 1px solid var(--line);
+}
+.section-bars b {
+  display: block;
+  height: 100%;
+  background: var(--green);
+}
+.section-bars li.weakest b {
+  background: #b4553f;
+}
+.section-bars li.weakest em {
+  color: #b4553f;
+}
+.section-bars small {
+  font-size: 10px;
+  color: #6c776f;
+  white-space: nowrap;
+}
+.score-trend {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  overflow-x: auto;
+}
+.score-trend li {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 34px;
+  flex: 1 0 auto;
+}
+.score-trend i {
+  display: block;
+  width: 100%;
+  max-width: 26px;
+  min-height: 3px;
+  background: var(--green);
+}
+.score-trend i.fail {
+  background: #d8bdb4;
+}
+.score-trend li.is-mock i {
+  outline: 1px solid var(--moss);
+  outline-offset: 1px;
+}
+.score-trend em {
+  font: 600 11px inherit;
+  font-style: normal;
+}
+.score-trend small {
+  font-size: 9px;
+  color: #6c776f;
+  white-space: nowrap;
+}
+/* The columns need a common ceiling or a 100 and a 30 look the same height. */
+.exam-stats .score-trend {
+  height: 96px;
+}
+
 /* 專項強化集 */
 .drill-summary p {
   font-size: 12px;

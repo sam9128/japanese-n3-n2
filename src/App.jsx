@@ -22,6 +22,7 @@ import { planToday, unlockedThrough as unlockedThroughFor } from "./unlockSchedu
 import { studyBalance } from "./studyBalance";
 import { readingSpeed } from "./readingSpeed";
 import { weakQuestions, SECTIONS } from "./weakQuestions";
+import { assessmentStats } from "./assessmentStats";
 import { buildMonthlyReport, reportablePeriods } from "./monthlyReport";
 import DriveSyncPanel from "./DriveSyncPanel";
 import { buildQuizQuestion, buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
@@ -2934,6 +2935,70 @@ function MockView({
  * was ever visible. Speed needs a history to mean anything, so the card leads with
  * the average and says whether the later half of the runs is faster than the earlier.
  */
+/**
+ * 檢核與模考分析 — which of the four sections is costing marks, and whether the
+ * mocks are improving. Both were already in the stored submissions; what the page
+ * had was a count of cards rated 有點難, which says nothing about either.
+ */
+function AssessmentStatsCard({ assessments, results }) {
+  const stats = useMemo(
+    () => assessmentStats(assessments, results),
+    [assessments, results],
+  );
+  if (!stats.papers)
+    return (
+      <div className="week-card exam-stats">
+        <span>檢核與模考分析</span>
+        <strong>還沒有作答紀錄</strong>
+        <p>交卷後這裡會按文字・語彙、文法、読解、聴解分開統計正確率，並顯示模考的分數趨勢。</p>
+      </div>
+    );
+  const mockText = {
+    up: `模考平均由 ${stats.mocks.earlier} 分進步到 ${stats.mocks.later} 分`,
+    down: `模考平均由 ${stats.mocks.earlier} 分退到 ${stats.mocks.later} 分`,
+    flat: `模考平均維持在 ${stats.mocks.later} 分左右`,
+    unknown:
+      stats.mocks.papers.length
+        ? `模考已作答 ${stats.mocks.papers.length} 回，滿三回才看趨勢`
+        : "尚未作答模考",
+  }[stats.mocks.direction];
+  return (
+    <div className="week-card exam-stats">
+      <span>檢核與模考分析</span>
+      <strong>
+        已作答 {stats.papers} 份 · 整體正確率 {stats.overall}%
+        {stats.weakest ? ` · 最弱是${stats.weakest.section}（${stats.weakest.percent}%）` : ""}
+      </strong>
+      <p>
+        {mockText}
+        {stats.blank ? `；另有 ${stats.blank} 題未作答，不計入正確率。` : "。"}
+      </p>
+      <ol className="section-bars">
+        {stats.sections.map((row) => (
+          <li key={row.section} className={row === stats.weakest ? "weakest" : ""}>
+            <em>{row.section}</em>
+            <i>
+              <b style={{ width: `${row.percent}%` }} />
+            </i>
+            <small>
+              {row.percent}% · {row.correct}/{row.answered} 題
+            </small>
+          </li>
+        ))}
+      </ol>
+      <ol className="score-trend">
+        {stats.trend.map((paper) => (
+          <li key={paper.id} className={paper.kind === "mock" ? "is-mock" : ""}>
+            <i style={{ height: `${Math.max(4, paper.score)}%` }} className={paper.passed ? "pass" : "fail"} />
+            <em>{paper.score}</em>
+            <small>{paper.kind === "mock" ? paper.title.replace("自編模考 ", "模") : paper.period.replace("-", "/")}</small>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function ReadingSpeedCard({ events }) {
   const speed = useMemo(() => readingSpeed(events), [events]);
   if (!speed.count)
@@ -3094,6 +3159,7 @@ function ProgressView({
       />
       <DailyPaceCard pace={dailyPace} compact />
       <ReadingSpeedCard events={store.events} />
+      <AssessmentStatsCard assessments={data.assessments} results={store.results} />
       <div className="metric-grid">
         <article>
           <span>已有學習紀錄</span>
