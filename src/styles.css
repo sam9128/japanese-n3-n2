@@ -8,6 +8,11 @@
   --moss: #53745e;
   --pale: #e6ece4;
   --line: #d7ddd4;
+  /* 9-10px captions in the data panels. #717d74 is the grey the rest of the page
+     uses at 11px and up; at this size it measures 4.30 against white, under the
+     4.5 that AA asks of small text. This measures 4.96, and 4.96 on the #fbfcfb
+     run rows as well. */
+  --caption: #657168;
   --paper: #fbfcf8;
   --red: #a85043;
   --gold: #c79a4c;
@@ -1263,11 +1268,51 @@ a {
 }
 .assessment-grid p {
   font-size: 12px;
-  color: #6c776f;
+  color: #717d74;
 }
 /* Past papers, listed under the card that produced them. Rows, not the outlined
    green buttons the rest of the card uses — these are a log to scan, and three of
    those buttons stacked would read as three ways to start the exam. */
+/* Data panels, on white like the .metric-grid tiles above them on the same page.
+   They were built on .week-card, which is the dark green single-line notice — and
+   every caption inside them is the grey written for a white card, so grey sat on
+   dark green and could not be read. A panel of figures is not a notice. */
+.data-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 21px;
+  margin-top: 24px;
+}
+.data-card > span {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--caption);
+}
+.data-card > strong {
+  display: block;
+  font: 700 19px "Noto Serif JP";
+  color: var(--green);
+  margin: 7px 0;
+}
+.data-card > p {
+  font-size: 12px;
+  color: var(--caption);
+  line-height: 1.7;
+  margin: 0;
+}
+/* The two analysis panels share a row on a desktop and fall back to one column
+   when there is no room for two. */
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 13px;
+}
+.analysis-grid .data-card {
+  margin-top: 0;
+  margin-bottom: 22px;
+}
+
 /* 長文速度 — the bar is read against the fastest run, so it answers "is this one
    of my quicker reads" rather than asking the reader to compare raw numbers. */
 .speed-stats {
@@ -1279,10 +1324,11 @@ a {
 .speed-stats b {
   display: block;
   font: 700 19px "Noto Serif JP";
+  color: var(--green);
 }
 .speed-stats small {
   font-size: 10px;
-  color: #6c776f;
+  color: var(--caption);
   letter-spacing: 0.06em;
 }
 .speed-runs {
@@ -1307,11 +1353,11 @@ a {
   left: 0;
   top: 0;
   bottom: 0;
-  background: #eef2ef;
+  background: var(--pale);
   z-index: 0;
 }
 .speed-runs i.correct {
-  background: #e7efe9;
+  background: #d9e5dc;
 }
 .speed-runs em,
 .speed-runs small {
@@ -1324,7 +1370,7 @@ a {
 }
 .speed-runs small {
   font-size: 10px;
-  color: #6c776f;
+  color: var(--caption);
 }
 
 /* 檢核與模考分析. The section bars answer "where am I losing marks"; the column
@@ -1339,7 +1385,7 @@ a {
 }
 .section-bars li {
   display: grid;
-  grid-template-columns: 82px 1fr auto;
+  grid-template-columns: 88px 1fr auto;
   align-items: center;
   gap: 10px;
 }
@@ -1350,7 +1396,7 @@ a {
 .section-bars i {
   display: block;
   height: 9px;
-  background: #eef2ef;
+  background: var(--pale);
   border: 1px solid var(--line);
 }
 .section-bars b {
@@ -1359,14 +1405,14 @@ a {
   background: var(--green);
 }
 .section-bars li.weakest b {
-  background: #b4553f;
+  background: var(--red);
 }
 .section-bars li.weakest em {
-  color: #b4553f;
+  color: var(--red);
 }
 .section-bars small {
   font-size: 10px;
-  color: #6c776f;
+  color: var(--caption);
   white-space: nowrap;
 }
 .score-trend {
@@ -1393,7 +1439,7 @@ a {
   background: var(--green);
 }
 .score-trend i.fail {
-  background: #d8bdb4;
+  background: #e0c7c1;
 }
 .score-trend li.is-mock i {
   outline: 1px solid var(--moss);
@@ -1405,7 +1451,7 @@ a {
 }
 .score-trend small {
   font-size: 9px;
-  color: #6c776f;
+  color: var(--caption);
   white-space: nowrap;
 }
 /* The columns need a common ceiling or a 100 and a 30 look the same height. */
@@ -1416,7 +1462,7 @@ a {
 /* 專項強化集 */
 .drill-summary p {
   font-size: 12px;
-  color: #6c776f;
+  color: var(--caption);
   margin: 4px 0 10px;
 }
 .drill-bar {
@@ -1480,7 +1526,7 @@ a {
   background: #eef4f0;
 }
 .drill-options button.wrong {
-  border-color: #b4553f;
+  border-color: var(--red);
   background: #f7eeeb;
 }
 .drill-feedback {
@@ -1492,7 +1538,7 @@ a {
   color: var(--green);
 }
 .drill-feedback strong.fail {
-  color: #b4553f;
+  color: var(--red);
 }
 .drill-feedback p {
   font-size: 13px;
@@ -1557,14 +1603,14 @@ a {
   color: var(--green);
 }
 .attempt-log b.fail {
-  color: #b4553f;
+  color: var(--red);
 }
 .attempt-log time {
   font-size: 12px;
 }
 .attempt-log small {
   font-size: 10px;
-  color: #6c776f;
+  color: #717d74;
 }
 .assessment-grid button,
 .settings-grid button,

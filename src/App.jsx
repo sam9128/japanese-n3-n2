@@ -2809,7 +2809,7 @@ function MockView({
         title="月檢核與模考"
         text="全部為自編題目；官方資源只提供題型參考連結。"
       />
-      <div className="week-card drill-summary">
+      <div className="data-card drill-summary">
         <span>專項強化集</span>
         {weak.total ? (
           <>
@@ -2947,7 +2947,7 @@ function AssessmentStatsCard({ assessments, results }) {
   );
   if (!stats.papers)
     return (
-      <div className="week-card exam-stats">
+      <div className="data-card exam-stats">
         <span>檢核與模考分析</span>
         <strong>還沒有作答紀錄</strong>
         <p>交卷後這裡會按文字・語彙、文法、読解、聴解分開統計正確率，並顯示模考的分數趨勢。</p>
@@ -2963,7 +2963,7 @@ function AssessmentStatsCard({ assessments, results }) {
         : "尚未作答模考",
   }[stats.mocks.direction];
   return (
-    <div className="week-card exam-stats">
+    <div className="data-card exam-stats">
       <span>檢核與模考分析</span>
       <strong>
         已作答 {stats.papers} 份 · 整體正確率 {stats.overall}%
@@ -3003,7 +3003,7 @@ function ReadingSpeedCard({ events }) {
   const speed = useMemo(() => readingSpeed(events), [events]);
   if (!speed.count)
     return (
-      <div className="week-card reading-speed">
+      <div className="data-card reading-speed">
         <span>長文速度</span>
         <strong>還沒有計時紀錄</strong>
         <p>
@@ -3018,7 +3018,7 @@ function ReadingSpeedCard({ events }) {
     unknown: `再讀 ${4 - speed.count} 篇就能看出趨勢`,
   }[speed.trend];
   return (
-    <div className="week-card reading-speed">
+    <div className="data-card reading-speed">
       <span>長文速度</span>
       <strong>
         平均 {speed.averageCpm.toLocaleString()} 字／分 · {trendText}
@@ -3158,8 +3158,12 @@ function ProgressView({
         text="每次練習都只保存在這台裝置；可輸出 CSV 或直接列印。"
       />
       <DailyPaceCard pace={dailyPace} compact />
-      <ReadingSpeedCard events={store.events} />
-      <AssessmentStatsCard assessments={data.assessments} results={store.results} />
+      {/* Side by side on a desktop: two full-width panels stacked under the metric
+          grid made this page a long scroll for two answers. */}
+      <div className="analysis-grid">
+        <ReadingSpeedCard events={store.events} />
+        <AssessmentStatsCard assessments={data.assessments} results={store.results} />
+      </div>
       <div className="metric-grid">
         <article>
           <span>已有學習紀錄</span>
