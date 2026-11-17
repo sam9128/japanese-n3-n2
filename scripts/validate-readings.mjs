@@ -24,6 +24,19 @@ const HAS_KANJI = /[一-龯]/;
 const LONG_VOWEL_TAIL = /(?:こう| こう|そう|とう|のう|ほう|もう|ろう|ぎょう|しょう|ちょう|りょう|きょう|ひょう|びょう|みょう|じょう|にょう|ゆう|きゅう|しゅう|ちゅう|りゅう|じゅう|ひゅう|びゅう|みゅう|ぐう|くう|すう|つう|ふう|ぬう|むう|るう)$/;
 
 const failures = [];
+const kimi = vocabulary.find((item) => item.id === "vocab-0087");
+const gimi = kimi?.senses?.find((sense) => sense.id === "tendency");
+if (kimi?.reading !== "きみ" || gimi?.reading !== "ぎみ" ||
+    gimi?.sourceSequence !== 1790980 || kimi.readingQuizEligible ||
+    !kimi.examples?.[0]?.ja.includes("気味が悪")) {
+  failures.push({ id: "vocab-0087", reason: "standalone kimi and suffix gimi must keep separate sources, readings and base examples" });
+}
+const eru = vocabulary.find((item) => item.id === "vocab-3861");
+const uru = eru?.senses?.find((sense) => sense.id === "possible");
+if (eru?.reading !== "える" || uru?.reading !== "うる" ||
+    uru?.sourceSequence !== 1454500 || eru.readingQuizEligible) {
+  failures.push({ id: "vocab-3861", reason: "independent eru and auxiliary uru require separate reading/source metadata and contextual quizzes" });
+}
 for (const item of vocabulary) {
   const source = authority.get(item.id);
   if (!source) {
@@ -58,6 +71,11 @@ for (const item of vocabulary) {
       term: item.term,
       reason: "reading quiz enabled for a word with no kanji to read",
     });
+  }
+  const senseReadings = new Set([item.reading,
+    ...(item.senses ?? []).map((sense) => sense.reading || item.reading)]);
+  if (item.readingQuizEligible && senseReadings.size > 1) {
+    failures.push({ id: item.id, reason: "multiple sense readings in a context-free reading quiz" });
   }
 }
 

@@ -5,6 +5,7 @@
 // in August towards July because cardProgress only keeps the latest rating. Both
 // failures look plausible on screen, so they get explicit cases here.
 import assert from "node:assert/strict";
+import { senseRevision } from "../src/senseProgress.js";
 import {
   buildMonthlyReport,
   periodEndDate,
@@ -180,8 +181,31 @@ check("only released months can be reported on", () => {
   assert.equal(reportablePeriods("116-06").length, 12);
 });
 
+check("sense mastery needs distinct contexts and respects the report cutoff", () => {
+  const card = { id: "word", unlockPeriod: "115-07", senses: [
+    { id: "sense", meaningZh: "意思", quizSentence: "例文", quizTranslationZh: "例句",
+      alternateQuiz: { ja: "別の例文", zh: "另一例句" } },
+  ] };
+  const events = [
+    ["1", "2026-07-10", "primary", true],
+    ["2", "2026-07-11", "primary", true],
+    ["3", "2026-08-10", "alternate", true],
+    ["4", "2026-09-10", "primary", false],
+  ].map(([id, date, contextId, quizCorrect]) => ({
+    id, cardId: card.id, senseId: "sense", contextId, quizCorrect,
+    senseRevision: senseRevision(card, card.senses[0]),
+    occurredAt: `${date}T12:00:00.000Z`,
+  }));
+  const report = (period) => buildMonthlyReport({
+    data: { vocabulary: [card] }, events, period, now: new Date("2026-10-10"),
+  });
+  assert.equal(report("115-07").masteredSenses, 0);
+  assert.equal(report("115-08").masteredSenses, 1);
+  assert.equal(report("115-09").masteredSenses, 0);
+});
+
 if (failures.length) {
   console.error(JSON.stringify({ ok: false, failures }, null, 2));
   process.exit(1);
 }
-console.log(JSON.stringify({ ok: true, cases: 15 }, null, 2));
+console.log(JSON.stringify({ ok: true, cases: 16 }, null, 2));

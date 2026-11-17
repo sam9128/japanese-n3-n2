@@ -25,6 +25,21 @@ for (const file of fs.readdirSync(periodsRoot)) {
 }
 
 const failures = [];
+// A dictionary's ability to take する does not make every occurrence a verb.
+// These real corpus examples previously claimed an object marked を although
+// the headword was a noun or an intransitive use.
+for (const id of ["vocab-0119", "vocab-0609", "vocab-3427"]) {
+  const card = vocabulary.find((item) => item.id === id);
+  if (!card?.examples?.[0]?.explanationZh.includes("是名詞")) {
+    failures.push({ id, reason: "nominal use incorrectly explained as a verb" });
+  }
+}
+for (const item of vocabulary) {
+  if (item.examples?.[0]?.explanationZh.includes("承接前面用「を」") &&
+      !item.examples[0].ja.includes("を")) {
+    failures.push({ id: item.id, reason: "explanation invents an absent object particle" });
+  }
+}
 for (const item of vocabulary) {
   const fields = [
     ["meaningZh", item.meaningZh],

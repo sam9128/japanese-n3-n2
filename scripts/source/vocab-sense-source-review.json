@@ -1,0 +1,26 @@
+{
+  "vocab-3828": {
+    "status": "correction-needed",
+    "currentTerm": "塵芥",
+    "currentReading": "ごみ",
+    "proposedTerm": "ごみ",
+    "proposedReading": "ごみ",
+    "proposedExampleJa": "ごみをまとめて捨てた。",
+    "proposedSequence": 1369900,
+    "exampleZh": "我把垃圾整理起來丟掉。",
+    "glossEn": "rubbish; trash; garbage; refuse; litter",
+    "reasonZh": "現有例句指日常垃圾。來源條目 1369905 的「塵芥」未列「ごみ」讀音，教材宜使用假名「ごみ」，並另核對新來源條目。"
+  },
+  "vocab-3899": {
+    "status": "correction-needed",
+    "currentTerm": "田ぼ",
+    "currentReading": "たんぼ",
+    "proposedTerm": "田んぼ",
+    "proposedReading": "たんぼ",
+    "proposedExampleJa": "春の田んぼに水が張られた。",
+    "proposedSequence": 1442840,
+    "exampleZh": "春天的水田灌了水。",
+    "glossEn": "rice field; rice paddy; paddy field",
+    "reasonZh": "來源條目將讀音「たんぼ」限定於「田んぼ」「田圃」。採用常見詞形「田んぼ」即可保留原義和讀音。"
+  }
+}

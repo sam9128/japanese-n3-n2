@@ -1,3 +1,5 @@
+import { senseProgress, senseRevision } from "./senseProgress.js";
+
 export const STUDY_QUIZ_SIZE = 3;
 export const STUDY_QUIZ_OPTION_COUNT = 4;
 export const STUDY_QUIZ_RECENT_ROUNDS = 3;
@@ -90,7 +92,45 @@ export function categoryDistractors(item, allCandidates = []) {
   );
 }
 
-export function buildQuizQuestion(item, allCandidates, random = Math.random) {
+export function buildQuizQuestion(item, allCandidates, random = Math.random, events = []) {
+  const senses = item.senses?.filter((sense) => sense.quizSentence && sense.meaningZh) ?? [];
+  if (new Set(senses.map((sense) => sense.meaningZh)).size >= 2) {
+    const states = senseProgress([item], events).get(item.id);
+    const unresolved = senses.filter((sense) =>
+      (states.get(sense.id)?.correctContexts.size ?? 0) < 2);
+    const candidates = unresolved.length ? unresolved : senses;
+    const sense = candidates[Math.floor(random() * candidates.length)];
+    const state = states.get(sense.id);
+    const contextRandom = random();
+    const contextId = state?.lastWrongContext
+      ?? (state?.correctContexts.size === 1
+        ? (state.correctContexts.has("primary") ? "alternate" : "primary")
+        : (contextRandom >= 0.5 ? "alternate" : "primary"));
+    const alternate = sense.alternateQuiz && contextId === "alternate"
+      ? sense.alternateQuiz
+      : null;
+    const otherMeanings = [...new Set(senses.map((entry) => entry.meaningZh))]
+      .filter((meaning) => meaning !== sense.meaningZh);
+    const options = shuffleItems([
+      sense.meaningZh,
+      ...shuffleItems(otherMeanings, random).slice(0, STUDY_QUIZ_OPTION_COUNT - 1),
+    ], random);
+    return {
+      itemId: item.id,
+      senseId: sense.id,
+      senseRevision: senseRevision(item, sense),
+      term: sense.term || item.term,
+      reading: sense.reading || item.reading,
+      category: item.category,
+      audioText: sense.reading || item.audioText || item.term,
+      contextId: alternate ? "alternate" : "primary",
+      context: alternate?.ja ?? sense.quizSentence,
+      contextTranslationZh: alternate?.zh ?? sense.quizTranslationZh,
+      correctMeaning: sense.meaningZh,
+      correctIndex: options.indexOf(sense.meaningZh),
+      options,
+    };
+  }
   const correctMeaning = item.meaningZh || item.usageZh || "";
   const distractors = Array.from(
     new Map(
@@ -123,6 +163,7 @@ export function buildStudyQuiz({
   progress = {},
   recentQuizRounds = [],
   random = Math.random,
+  events = [],
 }) {
   const quizItems = pickQuizItems({
     pool,
@@ -137,6 +178,7 @@ export function buildStudyQuiz({
           item,
           allCandidates?.length ? allCandidates : pool,
           random,
+          events,
         ),
       )
       // Staying inside one category can leave a question with no wrong answer to

@@ -64,8 +64,9 @@ const ring = (pool, seed) =>
   pool.slice(seed % Math.max(1, pool.length - 3)).concat(pool);
 
 export function kanjiReadingItem(item, pool, seed) {
+  const readings = item.term === "日本" ? ["にほん", "にっぽん"] : [item.reading];
   const distractors = ring(
-    pool.filter((x) => x.id !== item.id && x.reading !== item.reading),
+    pool.filter((x) => x.id !== item.id && !readings.includes(x.reading)),
     seed,
   ).map((x) => x.reading);
   return {
@@ -75,7 +76,7 @@ export function kanjiReadingItem(item, pool, seed) {
     passage: item.examples[0].ja.replaceAll(item.term, mark(item.term)),
     prompt: `${mark(item.term)}の読み方はどれですか。`,
     ...rotateOptions(item.reading, distractors, seed),
-    explanationZh: `「${item.term}」讀作「${item.reading}」，中文意思是「${item.meaningZh}」。`,
+    explanationZh: `「${item.term}」讀作「${readings.join("」或「")}」，中文意思是「${item.meaningZh}」。`,
     sourceCardId: item.id,
     logic: "kanji-reading",
   };

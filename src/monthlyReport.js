@@ -10,6 +10,7 @@
 //    learned in August towards July. The study log does carry timestamps, so the
 //    state at any cutoff is reconstructed by replaying it.
 import { PERIODS } from "./data.js";
+import { masteredSenseCount } from "./senseProgress.js";
 
 const STRONG_RATINGS = new Set(["good", "easy"]);
 // Ratings a learner can give a card. Quiz events also land in the study log but
@@ -134,6 +135,11 @@ export function buildMonthlyReport({
     period,
     isCurrentMonth,
     cutoff: cutoff.toISOString(),
+    masteredSenses: masteredSenseCount(
+      (data.vocabulary ?? []).filter((card) => PERIODS.indexOf(card.unlockPeriod) >= 0 &&
+        PERIODS.indexOf(card.unlockPeriod) <= index),
+      events.filter((event) => Date.parse(event.occurredAt) <= cutoff.getTime()),
+    ),
     planned: {
       vocabulary: planned?.vocabulary ?? 0,
       grammar: planned?.grammar ?? 0,

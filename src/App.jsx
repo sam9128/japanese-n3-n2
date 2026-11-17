@@ -23,6 +23,7 @@ import { studyBalance } from "./studyBalance";
 import { readingSpeed } from "./readingSpeed";
 import { weakQuestions, SECTIONS } from "./weakQuestions";
 import { assessmentStats } from "./assessmentStats";
+import { masteredSenseCount } from "./senseProgress";
 import { buildMonthlyReport, reportablePeriods } from "./monthlyReport";
 import DriveSyncPanel from "./DriveSyncPanel";
 import { buildQuizQuestion, buildStudyQuiz, rememberQuizRound } from "./studyQuiz";
@@ -318,6 +319,8 @@ function StudyQuizPanel({
   }, [answer, question, onAnswer, advance]);
   if (!question) return null;
   const card = cardsById?.get(question.itemId);
+  const assessedSense = card?.senses?.find((sense) => sense.id === question.senseId);
+  const feedbackExample = assessedSense?.example ?? card?.examples?.[0];
   const streak = Number(answer?.streak) || 0;
   return (
     <div className="lesson-card study-quiz-card" ref={cardRef}>
@@ -336,6 +339,12 @@ function StudyQuizPanel({
             {question.category === "grammar" ? "文法" : "單字"}
           </span>
           <h2>{question.term}</h2>
+          {question.context && (
+            <>
+              <p>{question.context}</p>
+              <p>這個詞在句中是什麼意思？</p>
+            </>
+          )}
           <p className="reading">{question.reading}</p>
           <p>請選出最接近的中文意思。</p>
         </div>
@@ -379,23 +388,25 @@ function StudyQuizPanel({
                     : "答對了 · 再答對一次就達標"
                 : "這題要再加強"}
             </strong>
-            {/* The whole card, because this is where the word is taught now. */}
+            {/* Teach the assessed sense first, with the others available for comparison. */}
             {card ? (
               <div className="answer">
-                <strong>{card.meaningZh}</strong>
-                <span className="usage-note">{card.usageZh}</span>
+                <strong>{assessedSense ? `本題義項：${question.correctMeaning}` : card.meaningZh}</strong>
+                {!assessedSense && <span className="usage-note">{card.usageZh}</span>}
                 <div className="example-line">
-                  <p>{card.examples?.[0]?.ja}</p>
+                  <p>{feedbackExample?.ja}</p>
                   <ExampleAudio
-                    text={card.examples?.[0]?.ja}
+                    text={feedbackExample?.ja}
                     settings={settings}
                   />
                 </div>
-                <ExampleTranslation example={card.examples?.[0]} />
+                <ExampleTranslation example={feedbackExample} />
+                <VocabularySenses senses={card.senses} settings={settings} />
               </div>
             ) : (
               <span>正確意思：{question.correctMeaning}</span>
             )}
+            {question.contextTranslationZh && <p>{question.contextTranslationZh}</p>}
             {onKnown && answer.correct && (
               <button
                 className="text-button already-known"
@@ -973,7 +984,7 @@ function TodayView({
     const outstanding = roundCards(cards, store.progress);
     if (!outstanding.length) return;
     const questions = outstanding
-      .map((item) => buildQuizQuestion(item, quizCandidates))
+      .map((item) => buildQuizQuestion(item, quizCandidates, Math.random, store.events))
       .filter((question) => question.options.length >= 2);
     if (!questions.length) return;
     updatePage((current) => {
@@ -997,6 +1008,7 @@ function TodayView({
     quizCandidates,
     reviewMode,
     store.progress,
+    store.events,
     updatePage,
   ]);
   // Review mode has no cards to reveal, so the quiz starts straight away and a
@@ -1007,6 +1019,7 @@ function TodayView({
       pool: learnedQuizPool.length ? learnedQuizPool : quizCandidates,
       allCandidates: quizCandidates,
       progress: store.progress,
+      events: store.events,
       recentQuizRounds: pageState.recentQuizRounds || [],
     });
     if (!questions.length) return;
@@ -1032,6 +1045,7 @@ function TodayView({
     pageState.recentQuizRounds,
     quizCandidates,
     store.progress,
+    store.events,
     updatePage,
   ]);
   const answerQuiz = useCallback(
@@ -1070,6 +1084,9 @@ function TodayView({
         await record(item, correct, {
           selectedOption: question.options[selectedIndex],
           correctOption: question.correctMeaning,
+          ...(question.senseId ? { senseId: question.senseId } : {}),
+          ...(question.senseRevision ? { senseRevision: question.senseRevision } : {}),
+          ...(question.contextId ? { contextId: question.contextId } : {}),
           quizRoundId: quiz.id,
           quizQuestion: currentIndex + 1,
           dailyBatch: reviewMode ? undefined : batchIndex + 1,
@@ -1325,6 +1342,35 @@ function TodayView({
   );
 }
 
+function VocabularySenses({ senses, settings }) {
+  if (!senses?.length) return null;
+  return (
+    <details>
+      <summary>比較詞義（{senses.length}）</summary>
+      <ol>
+        {senses.map((sense) => (
+          <li key={sense.id}>
+            <strong>{sense.meaningZh}</strong>
+            {sense.term && <p lang="ja">{sense.term}</p>}
+            {sense.reading && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => speakJapanese(sense.reading, settings)}
+                aria-label={`播放義項讀音（${sense.reading}）`}
+              >
+                {sense.reading} · 播放讀音
+              </button>
+            )}
+            <p lang="ja">{sense.example.ja}</p>
+            <p>{sense.example.zh}</p>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 function LibraryView({
   data,
   activePeriod,
@@ -1469,6 +1515,7 @@ function LibraryView({
                   settings={settings}
                 />
                 <ExampleTranslation example={item.examples?.[0]} />
+                <VocabularySenses senses={item.senses} settings={settings} />
               </details>
             </div>
             <button
@@ -3161,6 +3208,7 @@ function ProgressView({
       {/* Side by side on a desktop: two full-width panels stacked under the metric
           grid made this page a long scroll for two answers. */}
       <div className="analysis-grid">
+        <p>已掌握義項：{masteredSenseCount(data.vocabulary, store.events)}</p>
         <ReadingSpeedCard events={store.events} />
         <AssessmentStatsCard assessments={data.assessments} results={store.results} />
       </div>
@@ -3224,6 +3272,7 @@ function ProgressView({
           {report.completedTotal.toLocaleString()} 項（{report.rate}%）；
           當月新完成 {report.completedThisMonth.toLocaleString()} 項，
           記錄 {report.events} 次學習事件。
+          累積掌握 {report.masteredSenses} 個義項。
         </p>
         {isCurrentMonth ? (
           <p>

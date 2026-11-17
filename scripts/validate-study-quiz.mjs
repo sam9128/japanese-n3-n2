@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildQuizQuestion,
   buildStudyQuiz,
@@ -130,4 +131,64 @@ const remembered = rememberQuizRound(recentQuizRounds, ["card-7"]);
 assert.equal(remembered.length, 3, "最近題目紀錄只保留 3 輪");
 assert.deepEqual(remembered[0], ["card-7"], "最新 quiz 輪次應放在最前面");
 
+const readPack = (path) => JSON.parse(readFileSync(
+  new URL(`../public/content/${path}`, import.meta.url), "utf8",
+));
+const senseCards = readPack("index.json").periods
+  .flatMap((period) => readPack(`periods/${period}.json`).vocabulary)
+  .filter((card) => card.senses?.length);
+assert.ok(senseCards.length > 0, "生成教材應包含多義詞");
+for (const card of senseCards) {
+  assert.ok(Number.isInteger(card.senseSourceSequence), `${card.id} 應保留字典來源`);
+  assert.equal(new Set(card.senses.map((sense) => sense.id)).size, card.senses.length);
+  assert.equal(new Set(card.senses.map((sense) => sense.meaningZh)).size, card.senses.length);
+  const contextOwners = new Map();
+  for (const sense of card.senses) {
+    if (sense.term !== undefined) {
+      assert.ok(typeof sense.term === "string" && sense.term.trim(), `${card.id}/${sense.id} 義項字形不得空白`);
+    }
+    if (sense.reading !== undefined) {
+      assert.match(sense.reading, /^[ぁ-ゖァ-ヺー]+$/u, `${card.id}/${sense.id} 義項讀音應為假名`);
+    }
+    for (const [ja, zh] of [
+      [sense.example?.ja, sense.example?.zh],
+      [sense.quizSentence, sense.quizTranslationZh],
+      [sense.alternateQuiz?.ja, sense.alternateQuiz?.zh],
+    ]) {
+      assert.ok(typeof ja === "string" && ja.trim(), `${card.id}/${sense.id} 缺日文語境`);
+      assert.ok(typeof zh === "string" && zh.trim(), `${card.id}/${sense.id} 缺中文翻譯`);
+      const normalized = ja.replace(/[\s、。，．！？!?「」『』]/gu, "");
+      assert.ok(!contextOwners.has(normalized),
+        `${card.id}/${sense.id} 語境與 ${contextOwners.get(normalized)} 重複：${ja}`);
+      contextOwners.set(normalized, sense.id);
+    }
+  }
+  const questions = new Map();
+  for (let index = 0; index < card.senses.length; index++) {
+    const question = buildQuizQuestion(card, [], () => (index + 0.5) / card.senses.length);
+    questions.set(question.senseId, question);
+  }
+  for (const sense of card.senses) {
+    const question = questions.get(sense.id);
+    assert.ok(question, `${card.id}/${sense.id} 應可出題`);
+    assert.ok(question.context && question.contextTranslationZh);
+    assert.equal(question.term, sense.term || card.term);
+    assert.equal(question.reading, sense.reading || card.reading);
+    assert.equal(question.audioText, sense.reading || card.audioText || card.term);
+    assert.notEqual(question.context, sense.example.ja);
+    assert.equal(question.options[question.correctIndex], sense.meaningZh);
+    assert.ok(question.options.length >= 2 && question.options.length <= 4);
+    const senseRandom = (card.senses.indexOf(sense) + 0.5) / card.senses.length;
+    const variants = [0.1, 0.9].map((variantRandom) => {
+      let call = 0;
+      return buildQuizQuestion(card, [], () => call++ === 0 ? senseRandom : variantRandom);
+    });
+    assert.deepEqual(variants.map((variant) => variant.contextId), ["primary", "alternate"]);
+    assert.equal(variants[0].context, sense.quizSentence);
+    assert.equal(variants[1].context, sense.alternateQuiz.ja);
+    assert.ok(variants[1].contextTranslationZh);
+    assert.notEqual(variants[0].context, variants[1].context);
+    assert.notEqual(variants[1].context, sense.example.ja);
+  }
+}
 console.log("Study quiz validation passed.");
